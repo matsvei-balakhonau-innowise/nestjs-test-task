@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Build
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs & runtime data
+logs/
+*.log
+npm-debug.log*
+data/uploads/
+data/exports/
+tmp/
+
+# Docker volumes (if ever mounted locally)
+.docker-data/
+
+# Test
+*.lcov
