@@ -1,7 +1,7 @@
 export interface BusEvent {
   id: string;
   name: string;
-  producer: 'service-a' | 'service-b';
+  producer: 'ingest-service' | 'audit-service';
   occurredAt: string;
   body: Record<string, unknown>;
 }

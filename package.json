@@ -1,17 +1,17 @@
 {
   "name": "nestjs-test-task",
   "version": "0.1.0",
-  "description": "NestJS microservices A & B — Docker, MongoDB, Redis TimeSeries, event bus",
+  "description": "NestJS ingest + audit microservices — Docker, MongoDB, Redis TimeSeries, event bus",
   "private": true,
   "workspaces": [
     "apps/*",
     "shared/*"
   ],
   "scripts": {
-    "build:apps": "npm run build -w service-a -w service-b",
+    "build:apps": "npm run build -w ingest-service -w audit-service",
     "build": "npm run build:shared && npm run build:apps",
-    "dev:a": "npm run start:dev -w service-a",
-    "dev:b": "npm run start:dev -w service-b",
+    "dev:ingest": "npm run start:dev -w ingest-service",
+    "dev:audit": "npm run start:dev -w audit-service",
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",

@@ -9,7 +9,7 @@ import {
 @Injectable()
 export class ActivityPublisher {
   private readonly streamKey =
-    process.env.EVENT_STREAM_KEY || 'stream:service-a:actions';
+    process.env.EVENT_STREAM_KEY || 'stream:ingest:actions';
 
   constructor(
     private readonly eventBus: EventBusService,
@@ -23,14 +23,14 @@ export class ActivityPublisher {
     const event: BusEvent = {
       id: randomUUID(),
       name,
-      producer: 'service-a',
+      producer: 'ingest-service',
       occurredAt: new Date().toISOString(),
       body,
     };
 
     await this.eventBus.publish(this.streamKey, event);
-    await this.timeSeries.record(`ts:a:${name}`, 1, {
-      producer: 'service-a',
+    await this.timeSeries.record(`ts:ingest:${name}`, 1, {
+      producer: 'ingest-service',
       name,
     });
 

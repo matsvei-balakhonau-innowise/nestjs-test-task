@@ -31,51 +31,51 @@ services:
       retries: 5
       start_period: 10s
 
-  service-a:
+  ingest-service:
     build:
       context: .
-      dockerfile: apps/service-a/Dockerfile
-    container_name: nest-service-a
+      dockerfile: apps/ingest-service/Dockerfile
+    container_name: nest-ingest-service
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      SERVICE_A_PORT: 3001
+      INGEST_PORT: 3001
       MONGO_URI: mongodb://mongo:27017
-      MONGO_DB_A: nest_service_a
+      MONGO_DB_INGEST: nest_ingest
       REDIS_URL: redis://redis:6379
-      EVENT_STREAM_KEY: stream:service-a:actions
+      EVENT_STREAM_KEY: stream:ingest:actions
     ports:
       - '3001:3001'
     volumes:
-      - ./apps/service-a/storage:/app/apps/service-a/storage
-      - ./apps/service-a/uploads:/app/apps/service-a/uploads
+      - ./apps/ingest-service/storage:/app/apps/ingest-service/storage
+      - ./apps/ingest-service/uploads:/app/apps/ingest-service/uploads
     networks:
       - nest-net
     restart: unless-stopped
 
-  service-b:
+  audit-service:
     build:
       context: .
-      dockerfile: apps/service-b/Dockerfile
-    container_name: nest-service-b
+      dockerfile: apps/audit-service/Dockerfile
+    container_name: nest-audit-service
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
-      service-a:
+      ingest-service:
         condition: service_started
     environment:
-      SERVICE_B_PORT: 3002
+      AUDIT_PORT: 3002
       MONGO_URI: mongodb://mongo:27017
-      MONGO_DB_B: nest_service_b
+      MONGO_DB_AUDIT: nest_audit
       REDIS_URL: redis://redis:6379
-      EVENT_STREAM_KEY: stream:service-a:actions
-      EVENT_GROUP: service-b-consumers
-      EVENT_CONSUMER: service-b-1
+      EVENT_STREAM_KEY: stream:ingest:actions
+      EVENT_GROUP: audit-consumers
+      EVENT_CONSUMER: audit-1
     ports:
       - '3002:3002'
     networks:

@@ -13,9 +13,9 @@ export class StreamListener implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     const streamKey =
-      process.env.EVENT_STREAM_KEY || 'stream:service-a:actions';
-    const group = process.env.EVENT_GROUP || 'service-b-consumers';
-    const consumer = process.env.EVENT_CONSUMER || 'service-b-1';
+      process.env.EVENT_STREAM_KEY || 'stream:ingest:actions';
+    const group = process.env.EVENT_GROUP || 'audit-consumers';
+    const consumer = process.env.EVENT_CONSUMER || 'audit-1';
 
     // Fire-and-forget long poll — do not await (blocks forever)
     void this.eventBus.startConsumer({

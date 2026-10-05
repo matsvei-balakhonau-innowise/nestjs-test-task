@@ -19,7 +19,7 @@ node_modules/
 
 # Runtime
 *.log
-apps/service-a/storage/*
-!apps/service-a/storage/.gitkeep
-apps/service-a/uploads/*
-!apps/service-a/uploads/.gitkeep
+apps/ingest-service/storage/*
+!apps/ingest-service/storage/.gitkeep
+apps/ingest-service/uploads/*
+!apps/ingest-service/uploads/.gitkeep

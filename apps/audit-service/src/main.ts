@@ -14,7 +14,7 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   imports: [
     DatabaseModule.register({
       uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-      dbName: process.env.MONGO_DB_B || 'nest_service_b',
+      dbName: process.env.MONGO_DB_AUDIT || 'nest_audit',
     }),
     CacheModule.register(redisUrl),
     EventBusModule.register(redisUrl),
@@ -33,15 +33,15 @@ async function bootstrap() {
   );
 
   const swagger = new DocumentBuilder()
-    .setTitle('Service B')
-    .setDescription('Audit log / reporting microservice')
+    .setTitle('Audit service')
+    .setDescription('Activity audit trail and reporting')
     .setVersion('0.1.0')
     .build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
 
-  const port = Number(process.env.SERVICE_B_PORT ?? 3002);
+  const port = Number(process.env.AUDIT_PORT ?? 3002);
   await app.listen(port);
-  console.log(`service-b up on :${port} (docs /docs, api /v1)`);
+  console.log(`audit-service up on :${port} (docs /docs, api /v1)`);
 }
 
 void bootstrap();

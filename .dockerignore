@@ -8,5 +8,5 @@ node_modules
 *.md
 .vscode
 .idea
-apps/service-a/storage
-apps/service-a/uploads
+apps/ingest-service/storage
+apps/ingest-service/uploads

@@ -16,7 +16,7 @@ export class StatusService {
     ]);
 
     return {
-      app: 'service-b',
+      app: 'audit-service',
       healthy: mongo && redis,
       dependencies: {
         mongo: mongo ? 'reachable' : 'unreachable',

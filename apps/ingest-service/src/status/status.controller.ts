@@ -8,7 +8,7 @@ export class StatusController {
   constructor(private readonly statusService: StatusService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Dependency status for Service A' })
+  @ApiOperation({ summary: 'Dependency status for ingest-service' })
   getStatus() {
     return this.statusService.getStatus();
   }

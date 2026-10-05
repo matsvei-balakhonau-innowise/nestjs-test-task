@@ -13,7 +13,7 @@ export class ActivityController {
   })
   async smoke() {
     const event = await this.publisher.emit('status.probe', {
-      note: 'smoke test from service-a',
+      note: 'smoke test from ingest-service',
     });
     return { accepted: true, event };
   }

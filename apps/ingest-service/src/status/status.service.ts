@@ -16,7 +16,7 @@ export class StatusService {
     ]);
 
     return {
-      app: 'service-a',
+      app: 'ingest-service',
       healthy: mongo && redis,
       dependencies: {
         mongo: mongo ? 'reachable' : 'unreachable',

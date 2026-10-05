@@ -3,15 +3,15 @@ WORKDIR /app
 
 COPY package.json ./
 COPY shared/ ./shared/
-COPY apps/service-a/ ./apps/service-a/
+COPY apps/ingest-service/ ./apps/ingest-service/
 
 RUN npm install
 
 RUN npm run build -w @shared/database \
  && npm run build -w @shared/cache \
  && npm run build -w @shared/event-bus \
- && npm run build -w service-a
+ && npm run build -w ingest-service
 
-RUN mkdir -p /app/apps/service-a/storage /app/apps/service-a/uploads
-WORKDIR /app/apps/service-a
+RUN mkdir -p /app/apps/ingest-service/storage /app/apps/ingest-service/uploads
+WORKDIR /app/apps/ingest-service
 CMD ["node", "dist/main"]
