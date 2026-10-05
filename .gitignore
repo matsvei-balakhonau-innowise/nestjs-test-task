@@ -1,14 +1,11 @@
 # Dependencies
 node_modules/
-package-lock.json.bak
-
-# Build
-dist/
-build/
-coverage/
+**/node_modules/
+**/dist/
+**/coverage/
 *.tsbuildinfo
 
-# Env / secrets
+# Env
 .env
 .env.local
 .env.*.local
@@ -19,18 +16,10 @@ coverage/
 .vscode/
 *.swp
 .DS_Store
-Thumbs.db
 
-# Logs & runtime data
-logs/
+# Runtime
 *.log
-npm-debug.log*
-data/uploads/
-data/exports/
-tmp/
-
-# Docker volumes (if ever mounted locally)
-.docker-data/
-
-# Test
-*.lcov
+apps/service-a/storage/*
+!apps/service-a/storage/.gitkeep
+apps/service-a/uploads/*
+!apps/service-a/uploads/.gitkeep

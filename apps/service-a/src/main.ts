@@ -1,28 +1,45 @@
+import { Module, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
-import type { AppConfiguration } from '@app/shared';
-import { ServiceAModule } from './service-a.module';
+import { CacheModule } from '@shared/cache';
+import { DatabaseModule } from '@shared/database';
+import { EventBusModule } from '@shared/event-bus';
+import { ActivityModule } from './activity/activity.module';
+import { StatusModule } from './status/status.module';
+
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+
+@Module({
+  imports: [
+    DatabaseModule.register({
+      uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
+      dbName: process.env.MONGO_DB_A || 'nest_service_a',
+    }),
+    CacheModule.register(redisUrl),
+    EventBusModule.register(redisUrl),
+    StatusModule,
+    ActivityModule,
+  ],
+})
+class ServiceARootModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.create(ServiceAModule);
-  const configService = app.get(ConfigService);
-  const { host, port } =
-    configService.getOrThrow<AppConfiguration['serviceA']>('app.serviceA');
+  const app = await NestFactory.create(ServiceARootModule);
+  app.setGlobalPrefix('v1');
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
+  );
 
-  const swaggerConfig = new DocumentBuilder()
+  const swagger = new DocumentBuilder()
     .setTitle('Service A')
-    .setDescription(
-      'Data ingestion, search, and RedisTimeSeries event publishing',
-    )
+    .setDescription('Ingestion / search microservice')
     .setVersion('0.1.0')
     .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
 
-  await app.listen(port, host);
-  console.log(`Service A listening on http://${host}:${port}`);
-  console.log(`Swagger docs: http://localhost:${port}/docs`);
+  const port = Number(process.env.SERVICE_A_PORT ?? 3001);
+  await app.listen(port);
+  console.log(`service-a up on :${port} (docs /docs, api /v1)`);
 }
 
 void bootstrap();

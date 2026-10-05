@@ -1,43 +1,47 @@
+import { Module, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
-import {
-  buildRedisMicroserviceOptions,
-  type AppConfiguration,
-} from '@app/shared';
-import { ServiceBModule } from './service-b.module';
+import { CacheModule } from '@shared/cache';
+import { DatabaseModule } from '@shared/database';
+import { EventBusModule } from '@shared/event-bus';
+import { AuditModule } from './audit/audit.module';
+import { StatusModule } from './status/status.module';
+import { StreamListenerModule } from './stream-listener/stream-listener.module';
+
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+
+@Module({
+  imports: [
+    DatabaseModule.register({
+      uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
+      dbName: process.env.MONGO_DB_B || 'nest_service_b',
+    }),
+    CacheModule.register(redisUrl),
+    EventBusModule.register(redisUrl),
+    StatusModule,
+    AuditModule,
+    StreamListenerModule,
+  ],
+})
+class ServiceBRootModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.create(ServiceBModule);
-  const configService = app.get(ConfigService);
-  const serviceB =
-    configService.getOrThrow<AppConfiguration['serviceB']>('app.serviceB');
-  const messaging =
-    configService.getOrThrow<AppConfiguration['messaging']>('app.messaging');
-
-  app.connectMicroservice<MicroserviceOptions>(
-    buildRedisMicroserviceOptions(messaging),
+  const app = await NestFactory.create(ServiceBRootModule);
+  app.setGlobalPrefix('v1');
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
+  const swagger = new DocumentBuilder()
     .setTitle('Service B')
-    .setDescription('Event logs, filtered queries, and PDF reports')
+    .setDescription('Audit log / reporting microservice')
     .setVersion('0.1.0')
     .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
 
-  await app.startAllMicroservices();
-  await app.listen(serviceB.port, serviceB.host);
-
-  console.log(
-    `Service B listening on http://${serviceB.host}:${serviceB.port}`,
-  );
-  console.log(`Swagger docs: http://localhost:${serviceB.port}/docs`);
-  console.log(
-    `Redis microservice subscribed at ${messaging.host}:${messaging.port}`,
-  );
+  const port = Number(process.env.SERVICE_B_PORT ?? 3002);
+  await app.listen(port);
+  console.log(`service-b up on :${port} (docs /docs, api /v1)`);
 }
 
 void bootstrap();

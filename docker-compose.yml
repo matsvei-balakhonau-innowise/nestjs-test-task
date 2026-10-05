@@ -1,26 +1,29 @@
 services:
-  mongodb:
+  mongo:
     image: mongo:7
-    container_name: nestjs-mongodb
+    container_name: nest-mongo
     ports:
       - '27017:27017'
     volumes:
-      - mongodb_data:/data/db
+      - mongo_data:/data/db
+    networks:
+      - nest-net
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 15s
 
-  # Redis Stack includes RedisTimeSeries (TS.*)
   redis:
     image: redis/redis-stack-server:latest
-    container_name: nestjs-redis
+    container_name: nest-redis
     ports:
       - '6379:6379'
     volumes:
       - redis_data:/data
+    networks:
+      - nest-net
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -32,57 +35,57 @@ services:
     build:
       context: .
       dockerfile: apps/service-a/Dockerfile
-    container_name: nestjs-service-a
-    env_file:
-      - .env
-    environment:
-      SERVICE_A_PORT: 3001
-      MONGODB_URI: mongodb://mongodb:27017
-      MONGODB_DB: nestjs_test_task
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_URL: redis://redis:6379
-      REDIS_MESSAGING_HOST: redis
-      REDIS_MESSAGING_PORT: 6379
-    ports:
-      - '3001:3001'
-    volumes:
-      - service_a_data:/app/data
+    container_name: nest-service-a
     depends_on:
-      mongodb:
+      mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+    environment:
+      SERVICE_A_PORT: 3001
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB_A: nest_service_a
+      REDIS_URL: redis://redis:6379
+      EVENT_STREAM_KEY: stream:service-a:actions
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./apps/service-a/storage:/app/apps/service-a/storage
+      - ./apps/service-a/uploads:/app/apps/service-a/uploads
+    networks:
+      - nest-net
     restart: unless-stopped
 
   service-b:
     build:
       context: .
       dockerfile: apps/service-b/Dockerfile
-    container_name: nestjs-service-b
-    env_file:
-      - .env
-    environment:
-      SERVICE_B_PORT: 3002
-      MONGODB_URI: mongodb://mongodb:27017
-      MONGODB_DB: nestjs_test_task
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_URL: redis://redis:6379
-      REDIS_MESSAGING_HOST: redis
-      REDIS_MESSAGING_PORT: 6379
-    ports:
-      - '3002:3002'
+    container_name: nest-service-b
     depends_on:
-      mongodb:
+      mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
       service-a:
         condition: service_started
+    environment:
+      SERVICE_B_PORT: 3002
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB_B: nest_service_b
+      REDIS_URL: redis://redis:6379
+      EVENT_STREAM_KEY: stream:service-a:actions
+      EVENT_GROUP: service-b-consumers
+      EVENT_CONSUMER: service-b-1
+    ports:
+      - '3002:3002'
+    networks:
+      - nest-net
     restart: unless-stopped
 
 volumes:
-  mongodb_data:
+  mongo_data:
   redis_data:
-  service_a_data:
+
+networks:
+  nest-net:
+    driver: bridge

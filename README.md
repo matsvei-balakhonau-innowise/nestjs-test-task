@@ -1,93 +1,55 @@
-# NestJS Microservices Test Task
+# NestJS Microservices Task
 
-Two NestJS microservices (**Service A** & **Service B**), dockerized with MongoDB and Redis Stack (RedisTimeSeries), Swagger docs, and Redis-based inter-service messaging.
+Dockerized NestJS services **A** and **B** with MongoDB, Redis Stack (TimeSeries), Swagger, and a Redis Streams event bus.
 
-## Architecture
-
-| Component | Role |
-|-----------|------|
-| **Service A** (`:3001`) | Data fetch/upload/search (next), publishes actions to Redis messaging + RedisTimeSeries |
-| **Service B** (`:3002`) | Subscribes to A events, stores logs in MongoDB, log query API, PDF reports (next) |
-| **libs/shared** | Typed config, official MongoDB & Redis clients, RedisTimeSeries helper, messaging constants |
-| **MongoDB 7** | Document storage |
-| **Redis Stack** | Messaging transporter + RedisTimeSeries |
+## Layout
 
 ```
-Service A  --emit(service_a.action)-->  Redis  -->  Service B (subscriber)
-    |                                      |
-    +-- TS.ADD (RedisTimeSeries)           +-- MongoDB event_logs
+apps/
+  service-a/          # ingestion / search (port 3001)
+  service-b/          # audit logs / reports (port 3002)
+shared/
+  database/           # @shared/database — official mongodb driver
+  cache/              # @shared/cache — official redis + TimeSeries
+  event-bus/          # @shared/event-bus — Redis Streams transport
 ```
 
-## Prerequisites
+npm workspaces at the root. Each app has its own Nest CLI / prettier config.
 
-- Node.js 22+
-- Docker & Docker Compose
-
-## Quick start (Docker)
+## Run
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
 ```
 
-- Service A Swagger: http://localhost:3001/docs
-- Service B Swagger: http://localhost:3002/docs
-- Health: `GET /health` on both services
+| URL | Purpose |
+|-----|---------|
+| http://localhost:3001/docs | Service A Swagger |
+| http://localhost:3002/docs | Service B Swagger |
+| `GET /v1/status` | Health of deps |
+| `POST /v1/activity/smoke` | A → Streams + TimeSeries |
+| `GET /v1/audit` | B query stored events |
 
-Smoke-test messaging + TimeSeries:
-
-```bash
-curl -X POST http://localhost:3001/events/ping
-curl http://localhost:3002/logs
-```
-
-## Local development
+## Local dev
 
 ```bash
-cp .env.example .env
-# point Mongo/Redis at localhost if infra runs in Docker only:
-# MONGODB_URI=mongodb://localhost:27017
-# REDIS_URL=redis://localhost:6379
-# REDIS_HOST=localhost
-# REDIS_MESSAGING_HOST=localhost
-
-docker compose up -d mongodb redis
+docker compose up -d mongo redis
 npm install
-npm run start:a:dev   # terminal 1
-npm run start:b:dev   # terminal 2
+npm run build:shared
+npm run dev:a
+npm run dev:b
 ```
 
-## Project layout
+Use `MONGO_URI=mongodb://localhost:27017` and `REDIS_URL=redis://localhost:6379` in `.env`.
 
-```
-apps/
-  service-a/          # HTTP API + event publisher
-  service-b/          # HTTP API + Redis microservice subscriber
-libs/
-  shared/             # Mongo, Redis, config, messaging types
-docker-compose.yml
-```
+## Design notes
 
-## Roadmap (task features)
+- Messaging uses **Redis Streams** (`XADD` / `XREADGROUP`) with a consumer group on Service B — durable delivery, not fire-and-forget pub/sub.
+- API surface is versioned under `/v1`; OpenAPI lives at `/docs`.
+- Shared packages expose `register()` factories and Symbol injection tokens.
 
-**Service A**
-- [x] Shared Mongo/Redis (official drivers), Swagger, health
-- [x] Publish API actions → Redis transporter + RedisTimeSeries
-- [ ] Fetch large public API dataset → save JSON/Excel (in code)
-- [ ] Upload & parse file → robust Mongo insert
-- [ ] Search API with indexes & efficient pagination
+## Still to implement
 
-**Service B**
-- [x] Subscribe to A events, store logs, filter query API
-- [ ] PDF report with charts from time series data
-- [ ] Bonus: Go gRPC report service
-
-## Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run start:a:dev` | Service A watch mode |
-| `npm run start:b:dev` | Service B watch mode |
-| `npm run build:a` / `build:b` | Build individual apps |
-| `npm run docker:up` | Build & start full stack |
-| `npm run docker:down` | Stop stack |
+**Service A:** public API fetch → file, upload/parse → Mongo, indexed search + pagination  
+**Service B:** PDF report from TimeSeries; optional Go gRPC report service
