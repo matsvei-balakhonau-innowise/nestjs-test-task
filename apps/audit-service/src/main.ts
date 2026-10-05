@@ -5,6 +5,7 @@ import { CacheModule } from '@shared/cache';
 import { DatabaseModule } from '@shared/database';
 import { EventBusModule } from '@shared/event-bus';
 import { AuditModule } from './audit/audit.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { StatusModule } from './status/status.module';
 import { StreamListenerModule } from './stream-listener/stream-listener.module';
 
@@ -21,12 +22,13 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     StatusModule,
     AuditModule,
     StreamListenerModule,
+    ReportingModule,
   ],
 })
-class ServiceBRootModule {}
+class AuditServiceRootModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.create(ServiceBRootModule);
+  const app = await NestFactory.create(AuditServiceRootModule);
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),

@@ -33,6 +33,7 @@ docker compose up --build -d
 | `POST /v1/ingestion/import` | Upload JSON/Excel → parse → Mongo bulk insert |
 | `GET /v1/catalog/search` | Indexed search + pagination |
 | `GET /v1/audit` | Query stored audit events |
+| `GET /v1/reporting/timeseries.pdf` | PDF report with TimeSeries charts |
 
 ## Local dev
 
@@ -55,4 +56,4 @@ Use `MONGO_URI=mongodb://localhost:27017` and `REDIS_URL=redis://localhost:6379`
 
 ## Still to implement
 
-**audit-service:** PDF report from TimeSeries; optional Go gRPC report service
+Optional bonus: Go (or other) gRPC report service
