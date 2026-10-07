@@ -17,7 +17,6 @@ export class StreamListener implements OnModuleInit, OnModuleDestroy {
     const group = process.env.EVENT_GROUP || 'audit-consumers';
     const consumer = process.env.EVENT_CONSUMER || 'audit-1';
 
-    // Fire-and-forget long poll — do not await (blocks forever)
     void this.eventBus.startConsumer({
       streamKey,
       group,

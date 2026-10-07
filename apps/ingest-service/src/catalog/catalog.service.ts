@@ -6,7 +6,6 @@ export interface CatalogRecord extends Document {
   source: string;
   importedAt: Date;
   payload: Record<string, unknown>;
-  /** Flattened searchable string built from payload */
   searchText: string;
 }
 
@@ -98,6 +97,7 @@ export class CatalogService implements OnModuleInit {
     const skip = (page - 1) * pageSize;
 
     const cursor = collection.find(filter);
+
     if (params.q?.trim()) {
       cursor.project({ score: { $meta: 'textScore' } });
       cursor.sort({ score: { $meta: 'textScore' }, importedAt: -1 });
@@ -132,18 +132,22 @@ export class CatalogService implements OnModuleInit {
       if (value == null) {
         return;
       }
+
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         parts.push(String(value));
         return;
       }
+
       if (Array.isArray(value)) {
         value.forEach(walk);
         return;
       }
+
       if (typeof value === 'object') {
         Object.values(value as Record<string, unknown>).forEach(walk);
       }
     };
+
     walk(payload);
     return parts.join(' ').slice(0, 8_000);
   }

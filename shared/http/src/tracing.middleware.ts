@@ -22,11 +22,6 @@ type MiddlewareRes = {
 
 type NextFn = (err?: unknown) => void;
 
-/**
- * Express middleware: assigns correlation/request IDs, response headers,
- * and runs the rest of the request inside AsyncLocalStorage so publishers
- * can read `getCorrelationId()` without Request injection.
- */
 export function createTracingMiddleware() {
   return (req: MiddlewareReq, res: MiddlewareRes, next: NextFn): void => {
     const incoming =
@@ -71,5 +66,6 @@ function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
     return value[0];
   }
+
   return value || undefined;
 }

@@ -40,6 +40,7 @@ async function bootstrap() {
   TracingLogger.configure(SERVICE, instanceId);
 
   const app = await NestFactory.create(IngestServiceRootModule);
+
   app.use(createTracingMiddleware());
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(

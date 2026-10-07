@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { LabeledSeries } from '@shared/cache';
 
-/**
- * Renders Chart.js line charts when native canvas is available (Docker image).
- * Returns null on hosts without canvas so PDFKit vector charts can be used.
- */
 @Injectable()
 export class ChartRenderer {
   private readonly logger = new Logger(ChartRenderer.name);
@@ -27,6 +23,7 @@ export class ChartRenderer {
         height: 320,
         backgroundColour: 'white',
       });
+
       this.logger.log('Chart.js canvas renderer enabled');
     } catch (error: unknown) {
       this.logger.warn(

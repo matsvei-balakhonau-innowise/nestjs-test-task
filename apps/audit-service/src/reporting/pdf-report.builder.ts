@@ -211,7 +211,6 @@ export class PdfReportBuilder {
       doc.rect(x, y, barW, h).fill('#2a9d8f');
     });
 
-    // axis labels
     doc.fillColor('#666666').fontSize(8);
     doc.text(String(maxVal), chartX - 2, plotTop - 2, { width: 40, align: 'left' });
     doc.text('0', chartX - 2, plotTop + chartH - 8);
@@ -255,6 +254,7 @@ export class PdfReportBuilder {
     const maxAt = points[points.length - 1].at || minAt + 1;
 
     doc.strokeColor('#e76f51').lineWidth(1.5);
+
     points.forEach((point, index) => {
       const x =
         chartX + ((point.at - minAt) / Math.max(maxAt - minAt, 1)) * chartW;
@@ -265,6 +265,7 @@ export class PdfReportBuilder {
         doc.lineTo(x, y);
       }
     });
+
     doc.stroke();
 
     doc.fillColor('#666666').fontSize(8);

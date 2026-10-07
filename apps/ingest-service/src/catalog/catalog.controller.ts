@@ -41,12 +41,14 @@ export class CatalogController {
   })
   async search(@Query() query: SearchCatalogDto) {
     const result = await this.catalog.search(query);
+
     await this.activity.emit('catalog.search', {
       q: query.q ?? null,
       source: query.source ?? null,
       page: result.page,
       total: result.total,
     });
+
     return result;
   }
 
@@ -67,7 +69,9 @@ export class CatalogController {
   })
   async findOne(@Param('id') id: string) {
     const record = await this.catalog.findById(id);
+
     await this.activity.emit('catalog.get', { id });
+
     return record;
   }
 }

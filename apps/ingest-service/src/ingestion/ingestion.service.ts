@@ -61,6 +61,7 @@ export class IngestionService {
       const absolutePath = path.join(this.storageDir, `${base}.xlsx`);
       await this.writeExcel(rows, absolutePath);
       const { size } = await this.statSafe(absolutePath);
+
       return {
         absolutePath,
         relativePath: path.relative(process.cwd(), absolutePath),
@@ -73,6 +74,7 @@ export class IngestionService {
     const absolutePath = path.join(this.storageDir, `${base}.json`);
     const serialized = JSON.stringify(rows, null, 2);
     await writeFile(absolutePath, serialized, 'utf8');
+
     return {
       absolutePath,
       relativePath: path.relative(process.cwd(), absolutePath),
@@ -120,6 +122,7 @@ export class IngestionService {
 
       const contentType = response.headers.get('content-type') ?? '';
       const text = await response.text();
+
       try {
         return JSON.parse(text) as unknown;
       } catch {
@@ -150,7 +153,7 @@ export class IngestionService {
 
     if (payload && typeof payload === 'object') {
       const obj = payload as Record<string, unknown>;
-      // common envelope shapes: { data: [] }, { products: [] }, { results: [] }
+
       for (const key of ['data', 'products', 'items', 'results', 'records']) {
         if (Array.isArray(obj[key])) {
           return (obj[key] as unknown[]).map((item, index) =>
@@ -158,6 +161,7 @@ export class IngestionService {
           );
         }
       }
+
       return [this.asRecord(obj, 0)];
     }
 
@@ -168,6 +172,7 @@ export class IngestionService {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       return value as Record<string, unknown>;
     }
+
     return { value, _index: index };
   }
 
@@ -194,8 +199,10 @@ export class IngestionService {
 
     for (const row of rows) {
       const flat: Record<string, string | number | boolean | null> = {};
+
       for (const header of headers) {
         const value = row[header];
+
         if (value == null) {
           flat[header] = null;
         } else if (typeof value === 'object') {
@@ -210,6 +217,7 @@ export class IngestionService {
           flat[header] = String(value);
         }
       }
+
       sheet.addRow(flat);
     }
 
@@ -228,11 +236,13 @@ export class IngestionService {
   ): Promise<Record<string, unknown>[]> {
     const { readFile } = await import('fs/promises');
     const raw = await readFile(absolutePath, 'utf8');
+
     if (!raw.trim()) {
       throw new BadRequestException('Uploaded JSON file is empty');
     }
 
     let parsed: unknown;
+
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch (error: unknown) {
@@ -249,12 +259,14 @@ export class IngestionService {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(absolutePath);
     const sheet = workbook.worksheets[0];
+
     if (!sheet) {
       throw new BadRequestException('Excel workbook has no worksheets');
     }
 
     const headerRow = sheet.getRow(1);
     const headers: string[] = [];
+
     headerRow.eachCell({ includeEmpty: false }, (cell, col) => {
       headers[col - 1] = String(cell.value ?? `col_${col}`);
     });
@@ -268,11 +280,13 @@ export class IngestionService {
       if (rowNumber === 1) {
         return;
       }
+
       const record: Record<string, unknown> = {};
       headers.forEach((header, index) => {
         const cell = row.getCell(index + 1).value;
         record[header] = this.excelCellToJson(cell);
       });
+
       rows.push(record);
     });
 
@@ -287,6 +301,7 @@ export class IngestionService {
     if (value == null) {
       return null;
     }
+
     if (typeof value !== 'object') {
       return value;
     }
@@ -297,18 +312,23 @@ export class IngestionService {
         .map((part) => part.text ?? '')
         .join('');
     }
+
     if ('text' in record) {
       return record.text;
     }
+
     if ('result' in record) {
       return record.result ?? null;
     }
+
     if ('hyperlink' in record) {
       return record.text ?? record.hyperlink;
     }
+
     if (value instanceof Date) {
       return value.toISOString();
     }
+
     return JSON.stringify(value);
   }
 
@@ -317,7 +337,6 @@ export class IngestionService {
     return stat(absolutePath);
   }
 
-  /** Stream copy helper kept for future large-file paths */
   async copyUploadToStorage(
     sourcePath: string,
     targetName: string,
@@ -328,6 +347,7 @@ export class IngestionService {
       (await import('fs')).createReadStream(sourcePath),
       createWriteStream(target),
     );
+
     return target;
   }
 }

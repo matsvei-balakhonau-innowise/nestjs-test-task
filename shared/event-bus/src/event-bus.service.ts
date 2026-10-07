@@ -9,10 +9,6 @@ import { createClient, type RedisClientType } from 'redis';
 import { EVENT_BUS_URL } from './event-bus.tokens';
 import type { BusEvent, StreamMessage } from './event-bus.types';
 
-/**
- * Inter-service transport via Redis Streams (XADD / XREADGROUP),
- * not pub/sub — durable, consumer-group friendly.
- */
 @Injectable()
 export class EventBusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EventBusService.name);
@@ -29,6 +25,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     this.polling = false;
+
     if (this.client?.isOpen) {
       await this.client.quit();
     }
@@ -38,6 +35,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
     const streamId = await this.client.xAdd(streamKey, '*', {
       payload: JSON.stringify(event),
     });
+
     return streamId;
   }
 
@@ -57,9 +55,6 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Long-poll consumer loop. Call once from OnModuleInit of a subscriber.
-   */
   async startConsumer(options: {
     streamKey: string;
     group: string;
@@ -69,6 +64,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
   }): Promise<void> {
     const { streamKey, group, consumer, handler, blockMs = 5000 } = options;
     await this.ensureConsumerGroup(streamKey, group);
+
     this.polling = true;
     this.logger.log(
       `Consuming stream=${streamKey} group=${group} consumer=${consumer}`,
@@ -90,9 +86,11 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         for (const stream of results) {
           for (const entry of stream.messages) {
             const raw = entry.message.payload;
+
             if (!raw) {
               continue;
             }
+
             const event = JSON.parse(raw) as BusEvent;
             await handler({ streamId: entry.id, event });
             await this.client.xAck(streamKey, group, entry.id);
@@ -102,8 +100,10 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         if (!this.polling) {
           break;
         }
+
         const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(`Consumer loop error: ${msg}`);
+
         await new Promise((r) => setTimeout(r, 1000));
       }
     }

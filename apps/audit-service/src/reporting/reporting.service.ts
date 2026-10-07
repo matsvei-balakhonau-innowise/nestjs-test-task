@@ -58,6 +58,7 @@ export class ReportingService {
     if (query.activity?.trim()) {
       filters.push(`name=${query.activity.trim()}`);
     }
+
     return { fromDate, toDate, filters };
   }
 }

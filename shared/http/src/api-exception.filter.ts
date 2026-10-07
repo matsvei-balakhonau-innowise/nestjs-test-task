@@ -30,6 +30,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const body = exception.getResponse();
+
       if (typeof body === 'string') {
         message = body;
         error = HttpStatus[statusCode] ?? error;

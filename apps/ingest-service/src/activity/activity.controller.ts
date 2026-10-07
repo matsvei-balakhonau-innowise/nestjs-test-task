@@ -15,6 +15,7 @@ export class ActivityController {
     const event = await this.publisher.emit('status.probe', {
       note: 'smoke test from ingest-service',
     });
+
     return { accepted: true, event };
   }
 }

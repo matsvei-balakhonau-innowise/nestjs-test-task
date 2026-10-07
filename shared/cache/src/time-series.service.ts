@@ -20,8 +20,10 @@ export class TimeSeriesService {
     labels: Record<string, string> = {},
   ): Promise<void> {
     const args: string[] = ['TS.CREATE', key];
+
     if (Object.keys(labels).length) {
       args.push('LABELS');
+
       for (const [k, v] of Object.entries(labels)) {
         args.push(k, v);
       }
@@ -31,6 +33,7 @@ export class TimeSeriesService {
       await this.cache.raw().sendCommand(args);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
+
       if (
         msg.includes('already exists') ||
         msg.includes('BUSYKEY') ||
@@ -38,6 +41,7 @@ export class TimeSeriesService {
       ) {
         return;
       }
+
       throw error;
     }
   }
@@ -79,11 +83,11 @@ export class TimeSeriesService {
     }));
   }
 
-  /** TS.QUERYINDEX — find keys matching label filters */
   async queryIndex(filters: string[]): Promise<string[]> {
     if (filters.length === 0) {
       return [];
     }
+
     const result = (await this.cache.raw().sendCommand([
       'TS.QUERYINDEX',
       ...filters,
@@ -97,24 +101,29 @@ export class TimeSeriesService {
         'TS.INFO',
         key,
       ])) as Array<string | number | Array<string | string[]>>;
+
       if (!Array.isArray(info)) {
         return {};
       }
+
       for (let i = 0; i < info.length - 1; i += 2) {
         if (String(info[i]) === 'labels' && Array.isArray(info[i + 1])) {
           const pairs = info[i + 1] as Array<string | string[]>;
           const labels: Record<string, string> = {};
+
           for (const pair of pairs) {
             if (Array.isArray(pair) && pair.length >= 2) {
               labels[String(pair[0])] = String(pair[1]);
             }
           }
+
           return labels;
         }
       }
     } catch (error: unknown) {
       this.logger.debug(`TS.INFO failed for ${key}: ${String(error)}`);
     }
+
     return {};
   }
 
