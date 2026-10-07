@@ -52,6 +52,7 @@ export class TimeSeriesService {
     labels: Record<string, string> = {},
   ): Promise<void> {
     await this.ensureSeries(key, labels);
+
     try {
       await this.cache.raw().sendCommand(['TS.ADD', key, '*', String(value)]);
     } catch (error: unknown) {
