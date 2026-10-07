@@ -22,6 +22,13 @@ export interface AuditQuery {
   offset?: number;
 }
 
+export interface AuditSearchResult {
+  total: number;
+  limit: number;
+  offset: number;
+  items: WithId<AuditEntry>[];
+}
+
 const COLLECTION = 'audit_entries';
 
 @Injectable()
@@ -60,8 +67,10 @@ export class AuditStore implements OnModuleInit {
     return entry;
   }
 
-  async search(query: AuditQuery): Promise<WithId<AuditEntry>[]> {
+  async search(query: AuditQuery): Promise<AuditSearchResult> {
     const filter: Filter<AuditEntry> = {};
+    const limit = Math.min(query.limit ?? 50, 200);
+    const offset = Math.max(query.offset ?? 0, 0);
 
     if (query.name) {
       filter.name = query.name;
@@ -79,12 +88,17 @@ export class AuditStore implements OnModuleInit {
       }
     }
 
-    return this.database
-      .collection<AuditEntry>(COLLECTION)
-      .find(filter)
-      .sort({ occurredAt: -1 })
-      .skip(query.offset ?? 0)
-      .limit(Math.min(query.limit ?? 50, 200))
-      .toArray();
+    const collection = this.database.collection<AuditEntry>(COLLECTION);
+    const [total, items] = await Promise.all([
+      collection.countDocuments(filter),
+      collection
+        .find(filter)
+        .sort({ occurredAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .toArray(),
+    ]);
+
+    return { total, limit, offset, items };
   }
 }

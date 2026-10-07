@@ -8,12 +8,7 @@ module.exports = function (options) {
         if (!request || typeof request !== 'string') {
           return callback();
         }
-        const externalPrefixes = [
-          'pdfkit',
-          'canvas',
-          'chartjs-node-canvas',
-          'swagger-ui-dist',
-        ];
+        const externalPrefixes = ['swagger-ui-dist'];
         if (
           externalPrefixes.some(
             (prefix) => request === prefix || request.startsWith(`${prefix}/`),

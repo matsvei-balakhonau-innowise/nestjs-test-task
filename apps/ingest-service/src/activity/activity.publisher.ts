@@ -5,6 +5,7 @@ import {
   EventBusService,
   type BusEvent,
 } from '@shared/event-bus';
+import { getCorrelationId } from '@shared/http';
 
 @Injectable()
 export class ActivityPublisher {
@@ -20,12 +21,13 @@ export class ActivityPublisher {
     name: string,
     body: Record<string, unknown> = {},
   ): Promise<BusEvent> {
+    const correlationId = getCorrelationId();
     const event: BusEvent = {
       id: randomUUID(),
       name,
       producer: 'ingest-service',
       occurredAt: new Date().toISOString(),
-      body,
+      body: correlationId ? { ...body, correlationId } : body,
     };
 
     await this.eventBus.publish(this.streamKey, event);

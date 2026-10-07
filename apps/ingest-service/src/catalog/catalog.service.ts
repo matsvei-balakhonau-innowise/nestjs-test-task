@@ -1,5 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import type { Document, Filter, WithId } from 'mongodb';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ObjectId, type Document, type Filter, type WithId } from 'mongodb';
 import { DatabaseService } from '@shared/database';
 
 export interface CatalogRecord extends Document {
@@ -108,6 +108,22 @@ export class CatalogService implements OnModuleInit {
     const items = await cursor.skip(skip).limit(pageSize).toArray();
 
     return { page, pageSize, total, totalPages, items };
+  }
+
+  async findById(id: string): Promise<WithId<CatalogRecord>> {
+    if (!ObjectId.isValid(id)) {
+      throw new NotFoundException(`Catalog record ${id} not found`);
+    }
+
+    const record = await this.database
+      .collection<CatalogRecord>(COLLECTION)
+      .findOne({ _id: new ObjectId(id) });
+
+    if (!record) {
+      throw new NotFoundException(`Catalog record ${id} not found`);
+    }
+
+    return record;
   }
 
   private buildSearchText(payload: Record<string, unknown>): string {

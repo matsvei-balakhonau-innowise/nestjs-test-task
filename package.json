@@ -15,7 +15,7 @@
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "build:shared": "npm run build -w @shared/database -w @shared/cache -w @shared/event-bus"
+    "build:shared": "npm run build -w @shared/database -w @shared/cache -w @shared/event-bus -w @shared/http"
   },
   "engines": {
     "node": ">=20",

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import type { LabeledSeries } from '@shared/cache';
+import { ChartRenderer } from './chart-renderer';
 
 type SeriesStats = {
   samples: number;
@@ -12,6 +13,8 @@ type SeriesStats = {
 
 @Injectable()
 export class PdfReportBuilder {
+  constructor(private readonly charts: ChartRenderer) {}
+
   async build(options: {
     title: string;
     subtitle: string;
@@ -52,7 +55,7 @@ export class PdfReportBuilder {
 
     for (const item of options.series) {
       doc.addPage();
-      this.drawSeriesPage(doc, item);
+      await this.drawSeriesPage(doc, item);
     }
 
     doc.addPage();
@@ -128,7 +131,10 @@ export class PdfReportBuilder {
     }
   }
 
-  private drawSeriesPage(doc: PDFKit.PDFDocument, item: LabeledSeries): void {
+  private async drawSeriesPage(
+    doc: PDFKit.PDFDocument,
+    item: LabeledSeries,
+  ): Promise<void> {
     const name = item.labels.name || item.key;
     const stats = this.stats(item.points);
 
@@ -148,6 +154,22 @@ export class PdfReportBuilder {
       `Samples ${stats.samples}   ·   Total ${stats.total.toFixed(0)}   ·   Avg ${stats.average.toFixed(2)}   ·   Min ${stats.min}   ·   Max ${stats.max}`,
     );
     doc.moveDown(1);
+
+    const chartImage = await this.charts.renderSeriesLine(item);
+    if (chartImage) {
+      doc
+        .fillColor('#0f3d4c')
+        .fontSize(12)
+        .text('Chart.js trend (labels on axes)');
+      doc.moveDown(0.3);
+      doc.image(chartImage, {
+        fit: [doc.page.width - 96, 240],
+        align: 'center',
+      });
+      doc.moveDown(1);
+      this.drawBarChart(doc, item);
+      return;
+    }
 
     this.drawBarChart(doc, item);
     doc.moveDown(1.2);

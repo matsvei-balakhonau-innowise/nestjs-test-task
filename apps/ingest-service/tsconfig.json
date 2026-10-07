@@ -13,7 +13,8 @@
     "paths": {
       "@shared/database": ["../../shared/database/src"],
       "@shared/cache": ["../../shared/cache/src"],
-      "@shared/event-bus": ["../../shared/event-bus/src"]
+      "@shared/event-bus": ["../../shared/event-bus/src"],
+      "@shared/http": ["../../shared/http/src"]
     },
     "incremental": true,
     "skipLibCheck": true,

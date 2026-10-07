@@ -16,18 +16,10 @@ export class ReportingService {
     filename: string;
     buffer: Buffer;
   }> {
-    const toDate = query.to ? new Date(query.to) : new Date();
-    const fromDate = query.from
-      ? new Date(query.from)
-      : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const filters = ['producer=ingest-service'];
-    if (query.activity?.trim()) {
-      filters.push(`name=${query.activity.trim()}`);
-    }
+    const { fromDate, toDate, filters } = this.resolveWindow(query);
 
     this.logger.log(
-      `Building PDF report filters=${filters.join(',')} from=${fromDate.toISOString()} to=${toDate.toISOString()}`,
+      `Building Nest PDF filters=${filters.join(',')} from=${fromDate.toISOString()} to=${toDate.toISOString()}`,
     );
 
     const series = await this.timeSeries.loadMatchingSeries({
@@ -35,13 +27,11 @@ export class ReportingService {
       from: fromDate.getTime(),
       to: toDate.getTime(),
     });
-
-    // Drop empty series for a cleaner report
     const nonEmpty = series.filter((s) => s.points.length > 0);
 
     const buffer = await this.pdfBuilder.build({
       title: 'Ingest activity time-series report',
-      subtitle: 'audit-service · RedisTimeSeries',
+      subtitle: 'audit-service · RedisTimeSeries · Chart.js when available',
       generatedAt: new Date(),
       windowLabel: `${fromDate.toISOString()} → ${toDate.toISOString()}`,
       series: nonEmpty,
@@ -52,5 +42,22 @@ export class ReportingService {
       filename: `timeseries-report-${stamp}.pdf`,
       buffer,
     };
+  }
+
+  private resolveWindow(query: TimeseriesReportQueryDto): {
+    fromDate: Date;
+    toDate: Date;
+    filters: string[];
+  } {
+    const toDate = query.to ? new Date(query.to) : new Date();
+    const fromDate = query.from
+      ? new Date(query.from)
+      : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const filters = ['producer=ingest-service'];
+    if (query.activity?.trim()) {
+      filters.push(`name=${query.activity.trim()}`);
+    }
+    return { fromDate, toDate, filters };
   }
 }
