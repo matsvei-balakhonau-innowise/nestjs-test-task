@@ -9,6 +9,9 @@ import { createClient, type RedisClientType } from 'redis';
 import { EVENT_BUS_URL } from './event-bus.tokens';
 import type { BusEvent, StreamMessage } from './event-bus.types';
 
+const CLAIM_MIN_IDLE_MS = 5_000;
+const CLAIM_BATCH_SIZE = 10;
+
 @Injectable()
 export class EventBusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EventBusService.name);
@@ -19,6 +22,9 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     this.client = createClient({ url: this.url }) as RedisClientType;
+    this.client.on('error', (err: Error) =>
+      this.logger.error(`Event bus Redis error: ${err.message}`),
+    );
     await this.client.connect();
     this.logger.log('Event bus connected');
   }
@@ -72,11 +78,13 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
     while (this.polling) {
       try {
+        await this.claimPending(streamKey, group, consumer, handler);
+
         const results = await this.client.xReadGroup(
           group,
           consumer,
           { key: streamKey, id: '>' },
-          { COUNT: 10, BLOCK: blockMs },
+          { COUNT: CLAIM_BATCH_SIZE, BLOCK: blockMs },
         );
 
         if (!results) {
@@ -84,17 +92,12 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         }
 
         for (const stream of results) {
-          for (const entry of stream.messages) {
-            const raw = entry.message.payload;
-
-            if (!raw) {
-              continue;
-            }
-
-            const event = JSON.parse(raw) as BusEvent;
-            await handler({ streamId: entry.id, event });
-            await this.client.xAck(streamKey, group, entry.id);
-          }
+          await this.processEntries(
+            streamKey,
+            group,
+            stream.messages,
+            handler,
+          );
         }
       } catch (error: unknown) {
         if (!this.polling) {
@@ -111,5 +114,85 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
   stopConsumer(): void {
     this.polling = false;
+  }
+
+  private async claimPending(
+    streamKey: string,
+    group: string,
+    consumer: string,
+    handler: (message: StreamMessage) => Promise<void>,
+  ): Promise<void> {
+    let start = '0-0';
+
+    while (this.polling) {
+      const claimed = await this.client.xAutoClaim(
+        streamKey,
+        group,
+        consumer,
+        CLAIM_MIN_IDLE_MS,
+        start,
+        { COUNT: CLAIM_BATCH_SIZE },
+      );
+
+      const messages = (claimed.messages ?? []).filter(
+        (entry): entry is NonNullable<typeof entry> => entry != null,
+      );
+
+      if (messages.length === 0) {
+        break;
+      }
+
+      await this.processEntries(streamKey, group, messages, handler);
+
+      const nextId = String(claimed.nextId);
+      if (nextId === '0-0' || nextId === start) {
+        break;
+      }
+
+      start = nextId;
+    }
+  }
+
+  private async processEntries(
+    streamKey: string,
+    group: string,
+    entries: Array<{ id: string; message: Record<string, string> }>,
+    handler: (message: StreamMessage) => Promise<void>,
+  ): Promise<void> {
+    for (const entry of entries) {
+      const raw = entry.message.payload;
+
+      if (!raw) {
+        this.logger.warn(
+          `Dropping stream message ${entry.id}: missing payload`,
+        );
+        await this.client.xAck(streamKey, group, entry.id);
+        continue;
+      }
+
+      let event: BusEvent;
+
+      try {
+        event = JSON.parse(raw) as BusEvent;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+
+        this.logger.error(
+          `Dropping stream message ${entry.id}: invalid JSON (${msg})`,
+        );
+        await this.client.xAck(streamKey, group, entry.id);
+        continue;
+      }
+
+      try {
+        await handler({ streamId: entry.id, event });
+        await this.client.xAck(streamKey, group, entry.id);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Handler failed for stream message ${entry.id}; leaving pending for reclaim: ${msg}`,
+        );
+      }
+    }
   }
 }

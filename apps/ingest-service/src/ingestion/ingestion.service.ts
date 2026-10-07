@@ -5,14 +5,21 @@ import {
   Logger,
   RequestTimeoutException,
 } from '@nestjs/common';
+import { lookup } from 'dns/promises';
 import { createWriteStream } from 'fs';
 import { access, mkdir, writeFile } from 'fs/promises';
 import * as path from 'path';
+import { isIP } from 'net';
 import { pipeline } from 'stream/promises';
 import ExcelJS from 'exceljs';
 import { ExportFormat } from './dto/pull-dataset.dto';
 
 const FETCH_TIMEOUT_MS = 60_000;
+const MAX_FETCH_BYTES = Number(process.env.PULL_MAX_BYTES || 10 * 1024 * 1024);
+const DEFAULT_ALLOWED_HOSTS = [
+  'jsonplaceholder.typicode.com',
+  'dummyjson.com',
+];
 
 @Injectable()
 export class IngestionService {
@@ -105,13 +112,15 @@ export class IngestionService {
   }
 
   private async fetchJson(url: string): Promise<unknown> {
+    const safeUrl = await this.assertSafePullUrl(url);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(safeUrl.toString(), {
         signal: controller.signal,
         headers: { Accept: 'application/json' },
+        redirect: 'error',
       });
 
       if (!response.ok) {
@@ -120,8 +129,15 @@ export class IngestionService {
         );
       }
 
+      const contentLength = response.headers.get('content-length');
+      if (contentLength && Number(contentLength) > MAX_FETCH_BYTES) {
+        throw new BadRequestException(
+          `Upstream Content-Length ${contentLength} exceeds limit of ${MAX_FETCH_BYTES} bytes`,
+        );
+      }
+
       const contentType = response.headers.get('content-type') ?? '';
-      const text = await response.text();
+      const text = await this.readBodyLimited(response, MAX_FETCH_BYTES);
 
       try {
         return JSON.parse(text) as unknown;
@@ -144,6 +160,157 @@ export class IngestionService {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  private allowedPullHosts(): string[] {
+    const raw = process.env.PULL_ALLOWED_HOSTS;
+    if (raw === undefined || raw.trim() === '') {
+      return DEFAULT_ALLOWED_HOSTS;
+    }
+
+    return raw
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  private async assertSafePullUrl(urlString: string): Promise<URL> {
+    let url: URL;
+
+    try {
+      url = new URL(urlString);
+    } catch {
+      throw new BadRequestException('Invalid URL');
+    }
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new BadRequestException('Only http(s) URLs are allowed');
+    }
+
+    if (url.username || url.password) {
+      throw new BadRequestException('URLs with credentials are not allowed');
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (!hostname) {
+      throw new BadRequestException('URL hostname is required');
+    }
+
+    const allowed = this.allowedPullHosts();
+    if (!allowed.includes('*') && !allowed.includes(hostname)) {
+      throw new BadRequestException(
+        `Host "${hostname}" is not in the pull allow-list`,
+      );
+    }
+
+    if (this.isBlockedHostname(hostname)) {
+      throw new BadRequestException('URL targets a blocked address');
+    }
+
+    if (isIP(hostname)) {
+      if (this.isBlockedIp(hostname)) {
+        throw new BadRequestException('URL targets a blocked address');
+      }
+      return url;
+    }
+
+    let address: string;
+    try {
+      ({ address } = await lookup(hostname, { all: false }));
+    } catch {
+      throw new BadRequestException(`Could not resolve host "${hostname}"`);
+    }
+
+    if (this.isBlockedIp(address)) {
+      throw new BadRequestException('URL resolves to a blocked address');
+    }
+
+    return url;
+  }
+
+  private isBlockedHostname(hostname: string): boolean {
+    return (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname === 'metadata.google.internal'
+    );
+  }
+
+  private isBlockedIp(ip: string): boolean {
+    const version = isIP(ip);
+    if (version === 4) {
+      const parts = ip.split('.').map(Number);
+      const [a, b] = parts;
+
+      return (
+        a === 0 ||
+        a === 10 ||
+        a === 127 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168) ||
+        (a === 100 && b >= 64 && b <= 127) ||
+        a >= 224
+      );
+    }
+
+    if (version === 6) {
+      const normalized = ip.toLowerCase();
+      const v4Mapped = normalized.match(/:ffff:(\d+\.\d+\.\d+\.\d+)$/);
+      if (v4Mapped) {
+        return this.isBlockedIp(v4Mapped[1]);
+      }
+
+      return (
+        normalized === '::1' ||
+        normalized === '::' ||
+        normalized.startsWith('fc') ||
+        normalized.startsWith('fd') ||
+        normalized.startsWith('fe8') ||
+        normalized.startsWith('fe9') ||
+        normalized.startsWith('fea') ||
+        normalized.startsWith('feb') ||
+        normalized.startsWith('ff')
+      );
+    }
+
+    return true;
+  }
+
+  private async readBodyLimited(
+    response: Response,
+    maxBytes: number,
+  ): Promise<string> {
+    if (!response.body) {
+      throw new BadRequestException('Upstream returned an empty body');
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new BadRequestException(
+          `Upstream body exceeds limit of ${maxBytes} bytes`,
+        );
+      }
+
+      chunks.push(value);
+    }
+
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString(
+      'utf8',
+    );
   }
 
   private normalizeToRows(payload: unknown): Record<string, unknown>[] {

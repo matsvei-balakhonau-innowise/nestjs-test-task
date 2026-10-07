@@ -19,7 +19,7 @@ export class TimeSeriesService {
     key: string,
     labels: Record<string, string> = {},
   ): Promise<void> {
-    const args: string[] = ['TS.CREATE', key];
+    const args: string[] = ['TS.CREATE', key, 'DUPLICATE_POLICY', 'SUM'];
 
     if (Object.keys(labels).length) {
       args.push('LABELS');
@@ -34,11 +34,7 @@ export class TimeSeriesService {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
 
-      if (
-        msg.includes('already exists') ||
-        msg.includes('BUSYKEY') ||
-        msg.includes('TSDB')
-      ) {
+      if (msg.includes('already exists') || msg.includes('BUSYKEY')) {
         return;
       }
 
@@ -51,14 +47,21 @@ export class TimeSeriesService {
     value: number,
     labels: Record<string, string> = {},
   ): Promise<void> {
-    await this.ensureSeries(key, labels);
-
     try {
-      await this.cache.raw().sendCommand(['TS.ADD', key, '*', String(value)]);
+      await this.ensureSeries(key, labels);
+      await this.cache
+        .raw()
+        .sendCommand([
+          'TS.ADD',
+          key,
+          '*',
+          String(value),
+          'ON_DUPLICATE',
+          'SUM',
+        ]);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`TS.ADD failed for ${key}: ${msg}`);
-      throw error;
     }
   }
 
