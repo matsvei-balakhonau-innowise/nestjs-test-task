@@ -143,6 +143,7 @@ export class TimeSeriesService {
         this.infoLabels(key),
         this.readRange(key, from, to),
       ]);
+
       series.push({ key, labels, points });
     }
 
