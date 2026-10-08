@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Query, StreamableFile } from '@nestjs/common';
+import { Controller, Get, Query, StreamableFile } from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
@@ -28,7 +28,6 @@ export class ReportingController {
     description: 'PDF binary download',
     schema: { type: 'string', format: 'binary' },
   })
-  @Header('Content-Type', 'application/pdf')
   async timeseriesPdf(
     @Query() query: TimeseriesReportQueryDto,
   ): Promise<StreamableFile> {

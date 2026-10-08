@@ -138,7 +138,7 @@ export class IngestionController {
       fileFilter: (_req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
 
-        if (!['.json', '.xlsx', '.xls'].includes(ext)) {
+        if (!['.json', '.xlsx'].includes(ext)) {
           cb(
             new BadRequestException('Only .json and .xlsx uploads are allowed') as never,
             false,

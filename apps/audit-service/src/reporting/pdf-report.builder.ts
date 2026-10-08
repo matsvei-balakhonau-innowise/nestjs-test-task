@@ -200,7 +200,7 @@ export class PdfReportBuilder {
       return;
     }
 
-    const maxVal = Math.max(...points.map((p) => p.value), 1);
+    const maxVal = this.maxValue(points, 1);
     const gap = 2;
     const barW = Math.max(2, (chartW - gap * points.length) / points.length);
 
@@ -249,7 +249,7 @@ export class PdfReportBuilder {
       return;
     }
 
-    const maxVal = Math.max(...points.map((p) => p.value), 1);
+    const maxVal = this.maxValue(points, 1);
     const minAt = points[0].at;
     const maxAt = points[points.length - 1].at || minAt + 1;
 
@@ -312,14 +312,43 @@ export class PdfReportBuilder {
     if (points.length === 0) {
       return { samples: 0, total: 0, average: 0, min: 0, max: 0 };
     }
-    const values = points.map((p) => p.value);
-    const total = values.reduce((a, b) => a + b, 0);
+
+    let total = 0;
+    let min = points[0].value;
+    let max = points[0].value;
+
+    for (const point of points) {
+      total += point.value;
+      if (point.value < min) {
+        min = point.value;
+      }
+
+      if (point.value > max) {
+        max = point.value;
+      }
+    }
+
     return {
-      samples: values.length,
+      samples: points.length,
       total,
-      average: total / values.length,
-      min: Math.min(...values),
-      max: Math.max(...values),
+      average: total / points.length,
+      min,
+      max,
     };
+  }
+
+  private maxValue(
+    points: Array<{ value: number }>,
+    fallback: number,
+  ): number {
+    let max = fallback;
+
+    for (const point of points) {
+      if (point.value > max) {
+        max = point.value;
+      }
+    }
+
+    return max;
   }
 }

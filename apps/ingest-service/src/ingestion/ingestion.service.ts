@@ -102,7 +102,7 @@ export class IngestionService {
     if (ext === '.json') {
       return this.parseJsonFile(absolutePath);
     }
-    if (ext === '.xlsx' || ext === '.xls') {
+    if (ext === '.xlsx') {
       return this.parseExcelFile(absolutePath);
     }
 
@@ -423,45 +423,54 @@ export class IngestionService {
   private async parseExcelFile(
     absolutePath: string,
   ): Promise<Record<string, unknown>[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(absolutePath);
-    const sheet = workbook.worksheets[0];
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(absolutePath);
+      const sheet = workbook.worksheets[0];
 
-    if (!sheet) {
-      throw new BadRequestException('Excel workbook has no worksheets');
-    }
-
-    const headerRow = sheet.getRow(1);
-    const headers: string[] = [];
-
-    headerRow.eachCell({ includeEmpty: false }, (cell, col) => {
-      headers[col - 1] = String(cell.value ?? `col_${col}`);
-    });
-
-    if (headers.length === 0) {
-      throw new BadRequestException('Excel sheet has no header row');
-    }
-
-    const rows: Record<string, unknown>[] = [];
-    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber === 1) {
-        return;
+      if (!sheet) {
+        throw new BadRequestException('Excel workbook has no worksheets');
       }
 
-      const record: Record<string, unknown> = {};
-      headers.forEach((header, index) => {
-        const cell = row.getCell(index + 1).value;
-        record[header] = this.excelCellToJson(cell);
+      const headerRow = sheet.getRow(1);
+      const headers: string[] = [];
+
+      headerRow.eachCell({ includeEmpty: false }, (cell, col) => {
+        headers[col - 1] = String(cell.value ?? `col_${col}`);
       });
 
-      rows.push(record);
-    });
+      if (headers.length === 0) {
+        throw new BadRequestException('Excel sheet has no header row');
+      }
 
-    if (rows.length === 0) {
-      throw new BadRequestException('Excel sheet contains no data rows');
+      const rows: Record<string, unknown>[] = [];
+      sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber === 1) {
+          return;
+        }
+
+        const record: Record<string, unknown> = {};
+        headers.forEach((header, index) => {
+          const cell = row.getCell(index + 1).value;
+          record[header] = this.excelCellToJson(cell);
+        });
+
+        rows.push(record);
+      });
+
+      if (rows.length === 0) {
+        throw new BadRequestException('Excel sheet contains no data rows');
+      }
+
+      return rows;
+    } catch (error: unknown) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Could not parse Excel file: ${message}`);
     }
-
-    return rows;
   }
 
   private excelCellToJson(value: ExcelJS.CellValue): unknown {

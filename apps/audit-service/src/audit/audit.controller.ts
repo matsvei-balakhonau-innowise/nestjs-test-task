@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditStore } from './audit.store';
+import { SearchAuditDto } from './dto/search-audit.dto';
 
 @ApiTags('audit')
 @Controller('audit')
@@ -13,17 +14,6 @@ export class AuditController {
     description:
       'Filter by event name/type, producer, and date range. `type` is an alias for `name`.',
   })
-  @ApiQuery({ name: 'name', required: false, description: 'Event name, e.g. ingestion.pull' })
-  @ApiQuery({
-    name: 'type',
-    required: false,
-    description: 'Alias for `name` (task wording: filter by type)',
-  })
-  @ApiQuery({ name: 'producer', required: false })
-  @ApiQuery({ name: 'from', required: false, description: 'ISO datetime' })
-  @ApiQuery({ name: 'to', required: false, description: 'ISO datetime' })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiOkResponse({
     description: 'Paginated audit entries with full filtered total',
     schema: {
@@ -43,22 +33,14 @@ export class AuditController {
       },
     },
   })
-  async search(
-    @Query('name') name?: string,
-    @Query('type') type?: string,
-    @Query('producer') producer?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
+  async search(@Query() query: SearchAuditDto) {
     return this.auditStore.search({
-      name: name || type,
-      producer,
-      from: from ? new Date(from) : undefined,
-      to: to ? new Date(to) : undefined,
-      limit: limit ? Number(limit) : undefined,
-      offset: offset ? Number(offset) : undefined,
+      name: query.name || query.type,
+      producer: query.producer,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      limit: query.limit,
+      offset: query.offset,
     });
   }
 }

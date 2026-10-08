@@ -9,6 +9,14 @@ export type LabeledSeries = {
   points: TimeSeriesPoint[];
 };
 
+const TARGET_BUCKETS = 96;
+
+type MRangeRow = [
+  string,
+  Array<[string, string]>,
+  Array<[string | number, string | number]>,
+];
+
 @Injectable()
 export class TimeSeriesService {
   private readonly logger = new Logger(TimeSeriesService.name);
@@ -69,13 +77,17 @@ export class TimeSeriesService {
     key: string,
     from: string | number = '-',
     to: string | number = '+',
+    options: { aggregation?: 'count'; bucketMs?: number } = {},
   ): Promise<TimeSeriesPoint[]> {
-    const rows = (await this.cache.raw().sendCommand([
-      'TS.RANGE',
-      key,
-      String(from),
-      String(to),
-    ])) as Array<[string | number, string | number]>;
+    const args: string[] = ['TS.RANGE', key, String(from), String(to)];
+
+    if (options.aggregation && options.bucketMs) {
+      args.push('AGGREGATION', options.aggregation, String(options.bucketMs));
+    }
+
+    const rows = (await this.cache.raw().sendCommand(args)) as Array<
+      [string | number, string | number]
+    >;
 
     if (!Array.isArray(rows)) {
       return [];
@@ -135,21 +147,78 @@ export class TimeSeriesService {
     filters: string[];
     from?: string | number;
     to?: string | number;
+    bucketMs?: number;
   }): Promise<LabeledSeries[]> {
-    const keys = await this.queryIndex(options.filters);
-    const from = options.from ?? '-';
-    const to = options.to ?? '+';
-    const series: LabeledSeries[] = [];
-
-    for (const key of keys) {
-      const [labels, points] = await Promise.all([
-        this.infoLabels(key),
-        this.readRange(key, from, to),
-      ]);
-
-      series.push({ key, labels, points });
+    if (options.filters.length === 0) {
+      return [];
     }
 
-    return series;
+    const from = options.from ?? '-';
+    const to = options.to ?? '+';
+    const bucketMs = options.bucketMs ?? this.resolveBucketMs(from, to);
+
+    const rows = (await this.cache.raw().sendCommand([
+      'TS.MRANGE',
+      String(from),
+      String(to),
+      'WITHLABELS',
+      'AGGREGATION',
+      'count',
+      String(bucketMs),
+      'FILTER',
+      ...options.filters,
+    ])) as MRangeRow[] | null;
+
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    return rows.map(([key, labelPairs, points]) => ({
+      key: String(key),
+      labels: this.pairsToLabels(labelPairs),
+      points: Array.isArray(points)
+        ? points.map(([at, value]) => ({
+            at: Number(at),
+            value: Number(value),
+          }))
+        : [],
+    }));
+  }
+
+  private pairsToLabels(
+    pairs: Array<[string, string]> | null | undefined,
+  ): Record<string, string> {
+    const labels: Record<string, string> = {};
+
+    if (!Array.isArray(pairs)) {
+      return labels;
+    }
+
+    for (const pair of pairs) {
+      if (Array.isArray(pair) && pair.length >= 2) {
+        labels[String(pair[0])] = String(pair[1]);
+      }
+    }
+
+    return labels;
+  }
+
+  private resolveBucketMs(
+    from: string | number,
+    to: string | number,
+  ): number {
+    const fromMs =
+      from === '-' || from === undefined
+        ? Date.now() - 7 * 24 * 60 * 60 * 1000
+        : Number(from);
+    const toMs =
+      to === '+' || to === undefined ? Date.now() : Number(to);
+
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+      return 60 * 60 * 1000;
+    }
+
+    const span = toMs - fromMs;
+    return Math.max(1000, Math.ceil(span / TARGET_BUCKETS));
   }
 }

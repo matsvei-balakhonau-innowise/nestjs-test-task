@@ -69,7 +69,7 @@ export class AuditStore implements OnModuleInit {
 
   async search(query: AuditQuery): Promise<AuditSearchResult> {
     const filter: Filter<AuditEntry> = {};
-    const limit = Math.min(query.limit ?? 50, 200);
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
     const offset = Math.max(query.offset ?? 0, 0);
 
     if (query.name) {
