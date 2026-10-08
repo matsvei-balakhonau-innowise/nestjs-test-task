@@ -11,10 +11,10 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@shared/database": ["../../shared/database/src"],
-      "@shared/cache": ["../../shared/cache/src"],
-      "@shared/event-bus": ["../../shared/event-bus/src"],
-      "@shared/http": ["../../shared/http/src"]
+      "@shared/database": ["../../shared/database/dist"],
+      "@shared/cache": ["../../shared/cache/dist"],
+      "@shared/event-bus": ["../../shared/event-bus/dist"],
+      "@shared/http": ["../../shared/http/dist"]
     },
     "incremental": true,
     "skipLibCheck": true,

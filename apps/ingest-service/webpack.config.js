@@ -8,6 +8,9 @@ module.exports = function (options) {
         if (!request || typeof request !== 'string') {
           return callback();
         }
+        if (request.startsWith('@shared/')) {
+          return callback(null, `commonjs ${request}`);
+        }
         const externalPrefixes = ['swagger-ui-dist'];
         if (
           externalPrefixes.some(

@@ -27,7 +27,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     let error = 'Internal Server Error';
     let message: string | string[] = 'Unexpected error';
 
-    if (exception instanceof HttpException) {
+    if (isHttpExceptionLike(exception)) {
       statusCode = exception.getStatus();
       const body = exception.getResponse();
 
@@ -60,4 +60,19 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     response.status(statusCode).json(payload);
   }
+}
+
+function isHttpExceptionLike(
+  exception: unknown,
+): exception is HttpException {
+  if (exception instanceof HttpException) {
+    return true;
+  }
+
+  return (
+    typeof exception === 'object' &&
+    exception !== null &&
+    typeof (exception as { getStatus?: unknown }).getStatus === 'function' &&
+    typeof (exception as { getResponse?: unknown }).getResponse === 'function'
+  );
 }
