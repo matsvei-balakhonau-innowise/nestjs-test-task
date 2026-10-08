@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleInit,
   RequestTimeoutException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,7 +26,7 @@ const DEFAULT_ALLOWED_HOSTS = [
 ];
 
 @Injectable()
-export class IngestionService {
+export class IngestionService implements OnModuleInit {
   private readonly logger = new Logger(IngestionService.name);
   private readonly storageDir = path.join(process.cwd(), 'storage');
   private readonly uploadsDir = path.join(process.cwd(), 'uploads');
@@ -35,6 +36,10 @@ export class IngestionService {
   constructor(config: ConfigService<IngestEnv, true>) {
     this.maxFetchBytes = config.get('PULL_MAX_BYTES', { infer: true });
     this.pullAllowedHosts = config.get('PULL_ALLOWED_HOSTS', { infer: true });
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.ensureDirs();
   }
 
   async ensureDirs(): Promise<void> {

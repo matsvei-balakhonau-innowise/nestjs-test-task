@@ -197,28 +197,36 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
       const event = parsed;
 
-      const deliveries = await this.deliveryCount(
-        streamKey,
-        group,
-        entry.id,
-      );
-
-      if (deliveries >= MAX_DELIVERY_ATTEMPTS) {
-        this.logger.error(
-          `Dropping stream message ${entry.id} after ${deliveries} delivery attempts`,
-        );
-
-        await this.client.xAck(streamKey, group, entry.id);
-        continue;
-      }
-
       try {
         await handler({ streamId: entry.id, event });
         await this.client.xAck(streamKey, group, entry.id);
       } catch (error: unknown) {
         const msg = errorMessage(error);
+        const deliveries = await this.deliveryCount(
+          streamKey,
+          group,
+          entry.id,
+        );
+
+        if (deliveries === null) {
+          this.logger.warn(
+            `Handler failed for stream message ${entry.id}; delivery count unknown, leaving pending: ${msg}`,
+          );
+
+          continue;
+        }
+
+        if (deliveries >= MAX_DELIVERY_ATTEMPTS) {
+          this.logger.error(
+            `Dropping stream message ${entry.id} after ${deliveries} failed delivery attempts: ${msg}`,
+          );
+
+          await this.client.xAck(streamKey, group, entry.id);
+          continue;
+        }
+
         this.logger.error(
-          `Handler failed for stream message ${entry.id}; leaving pending for reclaim: ${msg}`,
+          `Handler failed for stream message ${entry.id} (attempt ${deliveries}/${MAX_DELIVERY_ATTEMPTS}); leaving pending for reclaim: ${msg}`,
         );
       }
     }
@@ -246,7 +254,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
     streamKey: string,
     group: string,
     id: string,
-  ): Promise<number> {
+  ): Promise<number | null> {
     try {
       const pending = await this.client.xPendingRange(
         streamKey,
@@ -257,16 +265,17 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (!Array.isArray(pending) || pending.length === 0) {
-        return 1;
+        return null;
       }
 
-      return pending[0]?.deliveriesCounter ?? 1;
+      const counter = pending[0]?.deliveriesCounter;
+      return typeof counter === 'number' && counter > 0 ? counter : null;
     } catch (error: unknown) {
-      this.logger.debug(
+      this.logger.warn(
         `XPENDING lookup failed for ${id}: ${errorMessage(error)}`,
       );
 
-      return 1;
+      return null;
     }
   }
 }

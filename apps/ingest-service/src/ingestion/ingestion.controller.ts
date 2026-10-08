@@ -16,6 +16,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { mkdir } from 'fs/promises';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import { ActivityPublisher } from '../activity/activity.publisher';
@@ -82,7 +83,10 @@ export class IngestionController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          cb(null, path.join(process.cwd(), 'uploads'));
+          const dir = path.join(process.cwd(), 'uploads');
+          mkdir(dir, { recursive: true })
+            .then(() => cb(null, dir))
+            .catch((error: unknown) => cb(error as Error, dir));
         },
         filename: (_req, file, cb) => {
           const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -107,8 +111,6 @@ export class IngestionController {
     }),
   )
   async importFile(@UploadedFile() file?: Express.Multer.File) {
-    await this.ingestion.ensureDirs();
-
     if (!file) {
       throw new BadRequestException('Missing multipart file field "file"');
     }

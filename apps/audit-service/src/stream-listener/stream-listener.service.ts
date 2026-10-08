@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { errorMessage } from '@shared/http';
 import { EventBusService, type StreamMessage } from '@shared/event-bus';
 import { AuditStore } from '../audit/audit.store';
 import type { AuditEnv } from '../config/env.validation';
@@ -19,15 +20,21 @@ export class StreamListener implements OnModuleInit, OnModuleDestroy {
     const group = this.config.get('EVENT_GROUP', { infer: true });
     const consumer = this.config.get('EVENT_CONSUMER', { infer: true });
 
-    void this.eventBus.startConsumer({
-      streamKey,
-      group,
-      consumer,
-      handler: async ({ streamId, event }: StreamMessage) => {
-        this.logger.log(`audit ingest name=${event.name} id=${event.id}`);
-        await this.auditStore.ingest(event, streamId);
-      },
-    });
+    void this.eventBus
+      .startConsumer({
+        streamKey,
+        group,
+        consumer,
+        handler: async ({ streamId, event }: StreamMessage) => {
+          this.logger.log(`audit ingest name=${event.name} id=${event.id}`);
+          await this.auditStore.ingest(event, streamId);
+        },
+      })
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Stream consumer failed to start or exited: ${errorMessage(error)}`,
+        );
+      });
   }
 
   onModuleDestroy(): void {
