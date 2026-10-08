@@ -6,11 +6,10 @@ import {
   RequestTimeoutException,
 } from '@nestjs/common';
 import { lookup } from 'dns/promises';
-import { createWriteStream } from 'fs';
-import { access, mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, readFile, stat, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { isIP } from 'net';
-import { pipeline } from 'stream/promises';
+import { errorMessage } from '@shared/http';
 import ExcelJS from 'exceljs';
 import { ExportFormat } from './dto/pull-dataset.dto';
 
@@ -30,14 +29,6 @@ export class IngestionService {
   async ensureDirs(): Promise<void> {
     await mkdir(this.storageDir, { recursive: true });
     await mkdir(this.uploadsDir, { recursive: true });
-  }
-
-  getUploadsDir(): string {
-    return this.uploadsDir;
-  }
-
-  getStorageDir(): string {
-    return this.storageDir;
   }
 
   async pullAndPersist(options: {
@@ -67,7 +58,7 @@ export class IngestionService {
     if (options.format === ExportFormat.EXCEL) {
       const absolutePath = path.join(this.storageDir, `${base}.xlsx`);
       await this.writeExcel(rows, absolutePath);
-      const { size } = await this.statSafe(absolutePath);
+      const { size } = await stat(absolutePath);
 
       return {
         absolutePath,
@@ -155,8 +146,9 @@ export class IngestionService {
           `Fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s for ${url}`,
         );
       }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new InternalServerErrorException(`Failed to fetch ${url}: ${message}`);
+      throw new InternalServerErrorException(
+        `Failed to fetch ${url}: ${errorMessage(error)}`,
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -401,7 +393,6 @@ export class IngestionService {
   private async parseJsonFile(
     absolutePath: string,
   ): Promise<Record<string, unknown>[]> {
-    const { readFile } = await import('fs/promises');
     const raw = await readFile(absolutePath, 'utf8');
 
     if (!raw.trim()) {
@@ -413,8 +404,7 @@ export class IngestionService {
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new BadRequestException(`Invalid JSON: ${message}`);
+      throw new BadRequestException(`Invalid JSON: ${errorMessage(error)}`);
     }
 
     return this.normalizeToRows(parsed);
@@ -468,8 +458,9 @@ export class IngestionService {
         throw error;
       }
 
-      const message = error instanceof Error ? error.message : String(error);
-      throw new BadRequestException(`Could not parse Excel file: ${message}`);
+      throw new BadRequestException(
+        `Could not parse Excel file: ${errorMessage(error)}`,
+      );
     }
   }
 
@@ -506,24 +497,5 @@ export class IngestionService {
     }
 
     return JSON.stringify(value);
-  }
-
-  private async statSafe(absolutePath: string): Promise<{ size: number }> {
-    const { stat } = await import('fs/promises');
-    return stat(absolutePath);
-  }
-
-  async copyUploadToStorage(
-    sourcePath: string,
-    targetName: string,
-  ): Promise<string> {
-    await this.ensureDirs();
-    const target = path.join(this.storageDir, targetName);
-    await pipeline(
-      (await import('fs')).createReadStream(sourcePath),
-      createWriteStream(target),
-    );
-
-    return target;
   }
 }

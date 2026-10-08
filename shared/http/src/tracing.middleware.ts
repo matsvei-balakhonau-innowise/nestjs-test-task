@@ -50,12 +50,24 @@ export function createTracingMiddleware() {
     });
 
     res.on('finish', () => {
-      TracingLogger.log('request ok', store, {
+      const meta = {
         method: req.method,
         path: req.path ?? req.url,
         status: res.statusCode,
         duration: `${Date.now() - started}ms`,
-      });
+      };
+
+      if (res.statusCode >= 500) {
+        TracingLogger.error('request failed', store, meta);
+        return;
+      }
+
+      if (res.statusCode >= 400) {
+        TracingLogger.log('request client error', store, meta);
+        return;
+      }
+
+      TracingLogger.log('request ok', store, meta);
     });
 
     runWithCorrelation(store, () => next());

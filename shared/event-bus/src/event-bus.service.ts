@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { createClient, type RedisClientType } from 'redis';
 import { EVENT_BUS_URL } from './event-bus.tokens';
+import { errorMessage } from '@shared/http';
 import type { BusEvent, StreamMessage } from './event-bus.types';
 
 const CLAIM_MIN_IDLE_MS = 5_000;
@@ -54,7 +55,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         MKSTREAM: true,
       });
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorMessage(error);
       if (!msg.includes('BUSYGROUP')) {
         throw error;
       }
@@ -104,7 +105,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
           break;
         }
 
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = errorMessage(error);
         this.logger.error(`Consumer loop error: ${msg}`);
 
         await new Promise((r) => setTimeout(r, 1000));
@@ -175,7 +176,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
       try {
         event = JSON.parse(raw) as BusEvent;
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = errorMessage(error);
 
         this.logger.error(
           `Dropping stream message ${entry.id}: invalid JSON (${msg})`,
@@ -188,7 +189,7 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         await handler({ streamId: entry.id, event });
         await this.client.xAck(streamKey, group, entry.id);
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = errorMessage(error);
         this.logger.error(
           `Handler failed for stream message ${entry.id}; leaving pending for reclaim: ${msg}`,
         );

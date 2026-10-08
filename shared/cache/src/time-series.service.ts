@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { errorMessage } from '@shared/http';
 import { CacheService } from './cache.service';
 
 export type TimeSeriesPoint = { at: number; value: number };
@@ -40,7 +41,7 @@ export class TimeSeriesService {
     try {
       await this.cache.raw().sendCommand(args);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorMessage(error);
 
       if (msg.includes('already exists') || msg.includes('BUSYKEY')) {
         return;
@@ -68,7 +69,7 @@ export class TimeSeriesService {
           'SUM',
         ]);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = errorMessage(error);
       this.logger.error(`TS.ADD failed for ${key}: ${msg}`);
     }
   }

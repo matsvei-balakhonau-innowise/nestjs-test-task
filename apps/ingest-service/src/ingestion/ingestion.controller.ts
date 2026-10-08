@@ -10,7 +10,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
   ApiOkResponse,
@@ -36,54 +35,10 @@ export class IngestionController {
   @Post('pull')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Fetch JSON from a public API and save as JSON or Excel (in code)',
+    summary: 'Fetch JSON from a public API and save as JSON or Excel',
   })
-  @ApiBody({
-    type: PullDatasetDto,
-    examples: {
-      photosJson: {
-        summary: 'Pull JSONPlaceholder photos as JSON',
-        value: {
-          url: 'https://jsonplaceholder.typicode.com/photos',
-          format: 'json',
-          filename: 'photos',
-        },
-      },
-      productsExcel: {
-        summary: 'Pull DummyJSON products as Excel',
-        value: {
-          url: 'https://dummyjson.com/products?limit=100',
-          format: 'excel',
-          filename: 'products',
-        },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'Dataset written to disk',
-    schema: {
-      example: {
-        message: 'Dataset pulled and written to disk',
-        absolutePath: '/app/apps/ingest-service/storage/photos.json',
-        relativePath: 'storage/photos.json',
-        format: 'json',
-        recordCount: 5000,
-        bytesWritten: 1039898,
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description: 'Invalid URL, empty payload, or bad filename',
-    schema: {
-      example: {
-        statusCode: 400,
-        error: 'Bad Request',
-        message: 'Remote API returned no records',
-        path: '/v1/ingestion/pull',
-        timestamp: '2026-10-05T10:00:00.000Z',
-      },
-    },
-  })
+  @ApiBody({ type: PullDatasetDto })
+  @ApiOkResponse({ description: 'Dataset written to disk' })
   async pull(@Body() body: PullDatasetDto) {
     const result = await this.ingestion.pullAndPersist({
       url: body.url,
@@ -140,7 +95,9 @@ export class IngestionController {
 
         if (!['.json', '.xlsx'].includes(ext)) {
           cb(
-            new BadRequestException('Only .json and .xlsx uploads are allowed') as never,
+            new BadRequestException(
+              'Only .json and .xlsx uploads are allowed',
+            ) as never,
             false,
           );
           return;

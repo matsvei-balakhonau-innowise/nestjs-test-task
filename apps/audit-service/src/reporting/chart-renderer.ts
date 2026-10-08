@@ -1,43 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { LabeledSeries } from '@shared/cache';
+import { errorMessage } from '@shared/http';
+
+type CanvasRenderer = {
+  renderToBuffer: (config: unknown) => Promise<Buffer>;
+};
 
 @Injectable()
 export class ChartRenderer {
   private readonly logger = new Logger(ChartRenderer.name);
-  private canvas: {
-    renderToBuffer: (config: unknown) => Promise<Buffer>;
-  } | null = null;
-
-  constructor() {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { ChartJSNodeCanvas } = require('chartjs-node-canvas') as {
-        ChartJSNodeCanvas: new (opts: {
-          width: number;
-          height: number;
-          backgroundColour: string;
-        }) => { renderToBuffer: (config: unknown) => Promise<Buffer> };
-      };
-      this.canvas = new ChartJSNodeCanvas({
-        width: 720,
-        height: 320,
-        backgroundColour: 'white',
-      });
-
-      this.logger.log('Chart.js canvas renderer enabled');
-    } catch (error: unknown) {
-      this.logger.warn(
-        `Chart.js canvas unavailable (${error instanceof Error ? error.message : String(error)}); using PDFKit charts`,
-      );
-      this.canvas = null;
-    }
-  }
+  private canvas: CanvasRenderer | null = null;
+  private initPromise: Promise<void> | null = null;
 
   get enabled(): boolean {
     return this.canvas != null;
   }
 
   async renderSeriesLine(series: LabeledSeries): Promise<Buffer | null> {
+    await this.ensureCanvas();
     if (!this.canvas) {
       return null;
     }
@@ -78,14 +58,38 @@ export class ChartRenderer {
         scales: {
           x: {
             title: { display: true, text: 'Time (UTC)' },
-            ticks: { maxRotation: 45, minRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+            ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 10 },
           },
           y: {
+            title: { display: true, text: 'Count / bucket' },
             beginAtZero: true,
-            title: { display: true, text: 'Value' },
           },
         },
       },
     });
+  }
+
+  private ensureCanvas(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.initCanvas();
+    }
+    return this.initPromise;
+  }
+
+  private async initCanvas(): Promise<void> {
+    try {
+      const { ChartJSNodeCanvas } = await import('chartjs-node-canvas');
+      this.canvas = new ChartJSNodeCanvas({
+        width: 720,
+        height: 320,
+        backgroundColour: 'white',
+      });
+      this.logger.log('Chart.js canvas renderer enabled');
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Chart.js canvas unavailable (${errorMessage(error)}); using PDFKit charts`,
+      );
+      this.canvas = null;
+    }
   }
 }
