@@ -1,4 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {
@@ -8,15 +9,19 @@ import {
   resolveSwaggerUiPath,
 } from '@shared/http';
 import { AppModule } from './app.module';
+import type { AuditEnv } from './config/env.validation';
 
 const SERVICE = 'audit-service';
 
 async function bootstrap() {
-  const instanceId =
-    process.env.INSTANCE_ID || `${SERVICE}-${process.pid.toString(36)}`;
-  TracingLogger.configure(SERVICE, instanceId);
-
   const app = await NestFactory.create(AppModule);
+  const config = app.get(ConfigService<AuditEnv, true>);
+
+  TracingLogger.configure(
+    SERVICE,
+    config.get('INSTANCE_ID', { infer: true }) ||
+      `${SERVICE}-${process.pid.toString(36)}`,
+  );
 
   app.use(createTracingMiddleware());
   app.setGlobalPrefix('v1');
@@ -41,7 +46,7 @@ async function bootstrap() {
     customSwaggerUiPath: resolveSwaggerUiPath(),
   });
 
-  const port = Number(process.env.AUDIT_PORT ?? 3002);
+  const port = config.get('AUDIT_PORT', { infer: true });
   await app.listen(port);
   console.log(`audit-service up on :${port} (docs /docs, api /v1)`);
 }

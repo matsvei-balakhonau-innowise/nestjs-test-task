@@ -5,16 +5,17 @@ import {
   Logger,
   RequestTimeoutException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { lookup } from 'dns/promises';
 import { access, mkdir, readFile, stat, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { isIP } from 'net';
 import { errorMessage } from '@shared/http';
 import ExcelJS from 'exceljs';
+import type { IngestEnv } from '../config/env.validation';
 import { ExportFormat } from './dto/pull-dataset.dto';
 
 const FETCH_TIMEOUT_MS = 60_000;
-const MAX_FETCH_BYTES = Number(process.env.PULL_MAX_BYTES || 10 * 1024 * 1024);
 const DEFAULT_ALLOWED_HOSTS = [
   'jsonplaceholder.typicode.com',
   'dummyjson.com',
@@ -25,6 +26,13 @@ export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
   private readonly storageDir = path.join(process.cwd(), 'storage');
   private readonly uploadsDir = path.join(process.cwd(), 'uploads');
+  private readonly maxFetchBytes: number;
+  private readonly pullAllowedHosts?: string;
+
+  constructor(config: ConfigService<IngestEnv, true>) {
+    this.maxFetchBytes = config.get('PULL_MAX_BYTES', { infer: true });
+    this.pullAllowedHosts = config.get('PULL_ALLOWED_HOSTS', { infer: true });
+  }
 
   async ensureDirs(): Promise<void> {
     await mkdir(this.storageDir, { recursive: true });
@@ -121,14 +129,14 @@ export class IngestionService {
       }
 
       const contentLength = response.headers.get('content-length');
-      if (contentLength && Number(contentLength) > MAX_FETCH_BYTES) {
+      if (contentLength && Number(contentLength) > this.maxFetchBytes) {
         throw new BadRequestException(
-          `Upstream Content-Length ${contentLength} exceeds limit of ${MAX_FETCH_BYTES} bytes`,
+          `Upstream Content-Length ${contentLength} exceeds limit of ${this.maxFetchBytes} bytes`,
         );
       }
 
       const contentType = response.headers.get('content-type') ?? '';
-      const text = await this.readBodyLimited(response, MAX_FETCH_BYTES);
+      const text = await this.readBodyLimited(response, this.maxFetchBytes);
 
       try {
         return JSON.parse(text) as unknown;
@@ -155,7 +163,7 @@ export class IngestionService {
   }
 
   private allowedPullHosts(): string[] {
-    const raw = process.env.PULL_ALLOWED_HOSTS;
+    const raw = this.pullAllowedHosts;
     if (raw === undefined || raw.trim() === '') {
       return DEFAULT_ALLOWED_HOSTS;
     }

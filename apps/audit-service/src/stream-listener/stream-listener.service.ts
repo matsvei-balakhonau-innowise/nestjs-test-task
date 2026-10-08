@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventBusService, type StreamMessage } from '@shared/event-bus';
 import { AuditStore } from '../audit/audit.store';
+import type { AuditEnv } from '../config/env.validation';
 
 @Injectable()
 export class StreamListener implements OnModuleInit, OnModuleDestroy {
@@ -9,13 +11,13 @@ export class StreamListener implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly eventBus: EventBusService,
     private readonly auditStore: AuditStore,
+    private readonly config: ConfigService<AuditEnv, true>,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const streamKey =
-      process.env.EVENT_STREAM_KEY || 'stream:ingest:actions';
-    const group = process.env.EVENT_GROUP || 'audit-consumers';
-    const consumer = process.env.EVENT_CONSUMER || 'audit-1';
+    const streamKey = this.config.get('EVENT_STREAM_KEY', { infer: true });
+    const group = this.config.get('EVENT_GROUP', { infer: true });
+    const consumer = this.config.get('EVENT_CONSUMER', { infer: true });
 
     void this.eventBus.startConsumer({
       streamKey,

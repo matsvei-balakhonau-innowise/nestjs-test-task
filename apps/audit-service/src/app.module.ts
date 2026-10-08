@@ -1,22 +1,38 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@shared/cache';
 import { DatabaseModule } from '@shared/database';
 import { EventBusModule } from '@shared/event-bus';
 import { AuditModule } from './audit/audit.module';
+import { validateAuditEnv, type AuditEnv } from './config/env.validation';
 import { ReportingModule } from './reporting/reporting.module';
 import { StatusModule } from './status/status.module';
 import { StreamListenerModule } from './stream-listener/stream-listener.module';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-
 @Module({
   imports: [
-    DatabaseModule.register({
-      uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-      dbName: process.env.MONGO_DB_AUDIT || 'nest_audit',
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      validate: validateAuditEnv,
     }),
-    CacheModule.register(redisUrl),
-    EventBusModule.register(redisUrl),
+    DatabaseModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AuditEnv, true>) => ({
+        uri: config.get('MONGO_URI', { infer: true }),
+        dbName: config.get('MONGO_DB_AUDIT', { infer: true }),
+      }),
+    }),
+    CacheModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AuditEnv, true>) =>
+        config.get('REDIS_URL', { infer: true }),
+    }),
+    EventBusModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AuditEnv, true>) =>
+        config.get('REDIS_URL', { infer: true }),
+    }),
     StatusModule,
     AuditModule,
     StreamListenerModule,

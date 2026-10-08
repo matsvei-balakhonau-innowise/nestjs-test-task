@@ -17,7 +17,7 @@
     "docker:logs": "docker compose logs -f",
     "db:clear-catalog": "docker exec nest-mongo mongosh nest_ingest --quiet --eval 'db.catalog_records.deleteMany({})'",
     "build:shared": "npm run build -w @shared/database -w @shared/http -w @shared/cache -w @shared/event-bus",
-    "test": "npm run test -w @shared/http",
+    "test": "npm run test -w @shared/http -w ingest-service -w audit-service",
     "lint": "eslint \"apps/*/src/**/*.ts\" \"shared/*/src/**/*.ts\""
   },
   "devDependencies": {

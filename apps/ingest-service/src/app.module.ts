@@ -1,22 +1,38 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@shared/cache';
 import { DatabaseModule } from '@shared/database';
 import { EventBusModule } from '@shared/event-bus';
 import { ActivityModule } from './activity/activity.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { validateIngestEnv, type IngestEnv } from './config/env.validation';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { StatusModule } from './status/status.module';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-
 @Module({
   imports: [
-    DatabaseModule.register({
-      uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-      dbName: process.env.MONGO_DB_INGEST || 'nest_ingest',
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      validate: validateIngestEnv,
     }),
-    CacheModule.register(redisUrl),
-    EventBusModule.register(redisUrl),
+    DatabaseModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<IngestEnv, true>) => ({
+        uri: config.get('MONGO_URI', { infer: true }),
+        dbName: config.get('MONGO_DB_INGEST', { infer: true }),
+      }),
+    }),
+    CacheModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<IngestEnv, true>) =>
+        config.get('REDIS_URL', { infer: true }),
+    }),
+    EventBusModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<IngestEnv, true>) =>
+        config.get('REDIS_URL', { infer: true }),
+    }),
     StatusModule,
     ActivityModule,
     CatalogModule,

@@ -1,21 +1,22 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { TimeSeriesService } from '@shared/cache';
-import {
-  EventBusService,
-  type BusEvent,
-} from '@shared/event-bus';
+import { EventBusService, type BusEvent } from '@shared/event-bus';
 import { getCorrelationId } from '@shared/http';
+import type { IngestEnv } from '../config/env.validation';
 
 @Injectable()
 export class ActivityPublisher {
-  private readonly streamKey =
-    process.env.EVENT_STREAM_KEY || 'stream:ingest:actions';
+  private readonly streamKey: string;
 
   constructor(
     private readonly eventBus: EventBusService,
     private readonly timeSeries: TimeSeriesService,
-  ) {}
+    config: ConfigService<IngestEnv, true>,
+  ) {
+    this.streamKey = config.get('EVENT_STREAM_KEY', { infer: true });
+  }
 
   async emit(
     name: string,
