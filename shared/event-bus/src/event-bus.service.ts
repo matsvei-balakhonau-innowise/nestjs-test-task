@@ -12,6 +12,7 @@ import type { BusEvent, StreamMessage } from './event-bus.types';
 
 const CLAIM_MIN_IDLE_MS = 5_000;
 const CLAIM_BATCH_SIZE = 10;
+const MAX_DELIVERY_ATTEMPTS = 5;
 
 @Injectable()
 export class EventBusService implements OnModuleInit, OnModuleDestroy {
@@ -171,16 +172,42 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      let event: BusEvent;
+      let parsed: unknown;
 
       try {
-        event = JSON.parse(raw) as BusEvent;
+        parsed = JSON.parse(raw) as unknown;
       } catch (error: unknown) {
         const msg = errorMessage(error);
 
         this.logger.error(
           `Dropping stream message ${entry.id}: invalid JSON (${msg})`,
         );
+        await this.client.xAck(streamKey, group, entry.id);
+        continue;
+      }
+
+      if (!this.isBusEvent(parsed)) {
+        this.logger.warn(
+          `Dropping stream message ${entry.id}: invalid or null event payload`,
+        );
+
+        await this.client.xAck(streamKey, group, entry.id);
+        continue;
+      }
+
+      const event = parsed;
+
+      const deliveries = await this.deliveryCount(
+        streamKey,
+        group,
+        entry.id,
+      );
+
+      if (deliveries >= MAX_DELIVERY_ATTEMPTS) {
+        this.logger.error(
+          `Dropping stream message ${entry.id} after ${deliveries} delivery attempts`,
+        );
+
         await this.client.xAck(streamKey, group, entry.id);
         continue;
       }
@@ -194,6 +221,52 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
           `Handler failed for stream message ${entry.id}; leaving pending for reclaim: ${msg}`,
         );
       }
+    }
+  }
+
+  private isBusEvent(value: unknown): value is BusEvent {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const event = value as Record<string, unknown>;
+
+    return (
+      typeof event.id === 'string' &&
+      typeof event.name === 'string' &&
+      typeof event.producer === 'string' &&
+      typeof event.occurredAt === 'string' &&
+      event.body !== null &&
+      typeof event.body === 'object' &&
+      !Array.isArray(event.body)
+    );
+  }
+
+  private async deliveryCount(
+    streamKey: string,
+    group: string,
+    id: string,
+  ): Promise<number> {
+    try {
+      const pending = await this.client.xPendingRange(
+        streamKey,
+        group,
+        id,
+        id,
+        1,
+      );
+
+      if (!Array.isArray(pending) || pending.length === 0) {
+        return 1;
+      }
+
+      return pending[0]?.deliveriesCounter ?? 1;
+    } catch (error: unknown) {
+      this.logger.debug(
+        `XPENDING lookup failed for ${id}: ${errorMessage(error)}`,
+      );
+
+      return 1;
     }
   }
 }

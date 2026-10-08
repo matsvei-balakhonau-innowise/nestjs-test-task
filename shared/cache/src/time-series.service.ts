@@ -78,7 +78,7 @@ export class TimeSeriesService {
     key: string,
     from: string | number = '-',
     to: string | number = '+',
-    options: { aggregation?: 'count'; bucketMs?: number } = {},
+    options: { aggregation?: 'sum' | 'count'; bucketMs?: number } = {},
   ): Promise<TimeSeriesPoint[]> {
     const args: string[] = ['TS.RANGE', key, String(from), String(to)];
 
@@ -109,6 +109,7 @@ export class TimeSeriesService {
       'TS.QUERYINDEX',
       ...filters,
     ])) as string[] | null;
+
     return Array.isArray(result) ? result.map(String) : [];
   }
 
@@ -164,7 +165,7 @@ export class TimeSeriesService {
       String(to),
       'WITHLABELS',
       'AGGREGATION',
-      'count',
+      'sum',
       String(bucketMs),
       'FILTER',
       ...options.filters,

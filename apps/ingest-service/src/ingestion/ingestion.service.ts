@@ -8,8 +8,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { lookup } from 'dns/promises';
 import { access, mkdir, readFile, stat, writeFile } from 'fs/promises';
+import * as http from 'http';
+import * as https from 'https';
 import * as path from 'path';
 import { isIP } from 'net';
+import type { IncomingMessage } from 'http';
 import { errorMessage } from '@shared/http';
 import ExcelJS from 'exceljs';
 import type { IngestEnv } from '../config/env.validation';
@@ -111,32 +114,38 @@ export class IngestionService {
   }
 
   private async fetchJson(url: string): Promise<unknown> {
-    const safeUrl = await this.assertSafePullUrl(url);
+    const target = await this.resolveSafePullTarget(url);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(safeUrl.toString(), {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' },
-        redirect: 'error',
-      });
+      const response = await this.pinnedHttpGet(target, controller.signal);
 
-      if (!response.ok) {
+      if (response.statusCode && response.statusCode >= 400) {
         throw new BadRequestException(
-          `Upstream responded ${response.status} for ${url}`,
+          `Upstream responded ${response.statusCode} for ${url}`,
         );
       }
 
-      const contentLength = response.headers.get('content-length');
-      if (contentLength && Number(contentLength) > this.maxFetchBytes) {
+      const contentLength = response.headers['content-length'];
+      const lengthHeader = Array.isArray(contentLength)
+        ? contentLength[0]
+        : contentLength;
+      if (lengthHeader && Number(lengthHeader) > this.maxFetchBytes) {
         throw new BadRequestException(
-          `Upstream Content-Length ${contentLength} exceeds limit of ${this.maxFetchBytes} bytes`,
+          `Upstream Content-Length ${lengthHeader} exceeds limit of ${this.maxFetchBytes} bytes`,
         );
       }
 
-      const contentType = response.headers.get('content-type') ?? '';
-      const text = await this.readBodyLimited(response, this.maxFetchBytes);
+      const contentTypeRaw = response.headers['content-type'];
+      const contentType = Array.isArray(contentTypeRaw)
+        ? contentTypeRaw[0]
+        : contentTypeRaw;
+      const text = await this.readBodyLimitedFromStream(
+        response,
+        this.maxFetchBytes,
+        controller.signal,
+      );
 
       try {
         return JSON.parse(text) as unknown;
@@ -149,7 +158,10 @@ export class IngestionService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.message === 'Aborted')
+      ) {
         throw new RequestTimeoutException(
           `Fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s for ${url}`,
         );
@@ -174,7 +186,11 @@ export class IngestionService {
       .filter(Boolean);
   }
 
-  private async assertSafePullUrl(urlString: string): Promise<URL> {
+  private async resolveSafePullTarget(urlString: string): Promise<{
+    url: URL;
+    hostname: string;
+    pinnedAddress: string;
+  }> {
     let url: URL;
 
     try {
@@ -211,21 +227,80 @@ export class IngestionService {
       if (this.isBlockedIp(hostname)) {
         throw new BadRequestException('URL targets a blocked address');
       }
-      return url;
+
+      return { url, hostname, pinnedAddress: hostname };
     }
 
-    let address: string;
+    let records: Array<{ address: string }>;
     try {
-      ({ address } = await lookup(hostname, { all: false }));
+      records = await lookup(hostname, { all: true, verbatim: true });
     } catch {
       throw new BadRequestException(`Could not resolve host "${hostname}"`);
     }
 
-    if (this.isBlockedIp(address)) {
-      throw new BadRequestException('URL resolves to a blocked address');
+    if (records.length === 0) {
+      throw new BadRequestException(`Could not resolve host "${hostname}"`);
     }
 
-    return url;
+    for (const { address } of records) {
+      if (this.isBlockedIp(address)) {
+        throw new BadRequestException('URL resolves to a blocked address');
+      }
+    }
+
+    return { url, hostname, pinnedAddress: records[0].address };
+  }
+
+  private pinnedHttpGet(
+    target: { url: URL; hostname: string; pinnedAddress: string },
+    signal: AbortSignal,
+  ): Promise<IncomingMessage> {
+    const { url, hostname, pinnedAddress } = target;
+    const isHttps = url.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    const port = url.port
+      ? Number(url.port)
+      : isHttps
+        ? 443
+        : 80;
+    const pathWithQuery = `${url.pathname}${url.search}`;
+    const family = isIP(pinnedAddress) === 6 ? 6 : 4;
+
+    return new Promise((resolve, reject) => {
+      const req = transport.request(
+        {
+          host: pinnedAddress,
+          port,
+          path: pathWithQuery,
+          method: 'GET',
+          headers: {
+            Host: hostname,
+            Accept: 'application/json',
+          },
+          servername: isHttps ? hostname : undefined,
+          lookup: (_host, _opts, cb) => cb(null, pinnedAddress, family),
+        },
+        (res) => resolve(res),
+      );
+
+      const onAbort = (): void => {
+        req.destroy(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+      };
+
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      req.on('error', (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      });
+
+      req.end();
+    });
   }
 
   private isBlockedHostname(hostname: string): boolean {
@@ -239,6 +314,11 @@ export class IngestionService {
   }
 
   private isBlockedIp(ip: string): boolean {
+    const mapped = this.extractIpv4FromMapped(ip);
+    if (mapped) {
+      return this.isBlockedIp(mapped);
+    }
+
     const version = isIP(ip);
     if (version === 4) {
       const parts = ip.split('.').map(Number);
@@ -258,10 +338,6 @@ export class IngestionService {
 
     if (version === 6) {
       const normalized = ip.toLowerCase();
-      const v4Mapped = normalized.match(/:ffff:(\d+\.\d+\.\d+\.\d+)$/);
-      if (v4Mapped) {
-        return this.isBlockedIp(v4Mapped[1]);
-      }
 
       return (
         normalized === '::1' ||
@@ -279,38 +355,76 @@ export class IngestionService {
     return true;
   }
 
-  private async readBodyLimited(
-    response: Response,
-    maxBytes: number,
-  ): Promise<string> {
-    if (!response.body) {
-      throw new BadRequestException('Upstream returned an empty body');
+  private extractIpv4FromMapped(ip: string): string | null {
+    const normalized = ip.toLowerCase();
+    const dotted = normalized.match(/(?:^|:)ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (dotted) {
+      return dotted[1];
     }
 
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
+    const hexTail = normalized.match(
+      /(?:^|:)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/,
+    );
+    if (!hexTail) {
+      return null;
+    }
+
+    const hi = parseInt(hexTail[1], 16);
+    const lo = parseInt(hexTail[2], 16);
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  }
+
+  private async readBodyLimitedFromStream(
+    response: IncomingMessage,
+    maxBytes: number,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const chunks: Buffer[] = [];
     let total = 0;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+    return await new Promise((resolve, reject) => {
+      const fail = (error: Error): void => {
+        response.destroy();
+        reject(error);
+      };
+
+      const onAbort = (): void => {
+        fail(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+      };
+
+      if (signal.aborted) {
+        onAbort();
+        return;
       }
 
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        throw new BadRequestException(
-          `Upstream body exceeds limit of ${maxBytes} bytes`,
-        );
-      }
+      signal.addEventListener('abort', onAbort, { once: true });
 
-      chunks.push(value);
-    }
+      response.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          signal.removeEventListener('abort', onAbort);
+          response.destroy();
+          reject(
+            new BadRequestException(
+              `Upstream body exceeds limit of ${maxBytes} bytes`,
+            ),
+          );
+          return;
+        }
 
-    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString(
-      'utf8',
-    );
+        chunks.push(chunk);
+      });
+
+      response.on('end', () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+
+      response.on('error', (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      });
+    });
   }
 
   private normalizeToRows(payload: unknown): Record<string, unknown>[] {
